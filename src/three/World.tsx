@@ -4,6 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { Tier, TierSettings } from "@/lib/quality";
+import { nextTask } from "@/lib/schedule";
 import { MENU_COUNT, stage } from "@/lib/stage-store";
 import {
   FINJAN,
@@ -83,7 +84,8 @@ const easeIn = (t: number) => Math.pow(Math.min(1, Math.max(0, t)), 2);
 
 /* --------------------------------------------------------------- resources */
 
-function createResources(settings: TierSettings) {
+/** Builds every geometry, painted texture and material, yielding to the browser between the heavy steps. */
+export async function createResources(settings: TierSettings) {
   const seg = settings.segments;
   const disposables: { dispose: () => void }[] = [];
   const keep = <T extends { dispose: () => void }>(x: T) => {
@@ -104,6 +106,8 @@ function createResources(settings: TierSettings) {
   const rim = keep(new THREE.TorusGeometry(2.0, 0.045, 10, Math.max(64, seg * 1.5)));
   const plane = keep(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
 
+  await nextTask();
+
   // steam: positions are computed in the shader; the attribute only seeds them
   const steamGeo = keep(new THREE.BufferGeometry());
   const r = rng(42);
@@ -114,11 +118,15 @@ function createResources(settings: TierSettings) {
   steamGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 50);
 
   // textures (painted on canvas)
+  await nextTask();
   const wood = keep(woodTexture(settings.envSize ? 1024 : 512));
   wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
+  await nextTask();
   const crema = keep(cremaTexture(settings.envSize >= 256 ? 512 : 256));
   const shadowTex = keep(radialTexture("rgba(12,6,2,0.75)", "rgba(12,6,2,0)"));
   const glowTex = keep(radialTexture("rgba(227,165,60,0.22)", "rgba(227,165,60,0)", 256));
+
+  await nextTask();
 
   const L = LATTE.lipV;
   const latteStrip = keep(
@@ -146,6 +154,8 @@ function createResources(settings: TierSettings) {
       [1, "#f5efe6"],
     ]),
   );
+
+  await nextTask();
 
   const glaze = (map: THREE.Texture, rough: number) =>
     keep(
@@ -287,6 +297,8 @@ function createResources(settings: TierSettings) {
   };
 }
 
+export type Resources = Awaited<ReturnType<typeof createResources>>;
+
 /** A warm "studio" made of glowing panels, baked once into a PMREM environment (no HDRI download). */
 function bakeEnvironment(gl: THREE.WebGLRenderer, size: number) {
   const env = new THREE.Scene();
@@ -318,22 +330,23 @@ function bakeEnvironment(gl: THREE.WebGLRenderer, size: number) {
 /* ------------------------------------------------------------------- world */
 
 interface WorldProps {
+  /** built by Experience before the Canvas exists (see createResources) */
+  res: Resources;
   settings: TierSettings;
   tier: Tier;
   reduced: boolean;
   onReady: () => void;
 }
 
-export default function World({ settings, tier, reduced, onReady }: WorldProps) {
+export default function World({ res, settings, tier, reduced, onReady }: WorldProps) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const invalidate = useThree((s) => s.invalidate);
   const getState = useThree((s) => s.get);
 
-  const res = useMemo(() => createResources(settings), [settings]);
   // the frame loop writes uniforms through this ref (render-time values stay untouched)
-  const live = useRef<ReturnType<typeof createResources> | null>(null);
+  const live = useRef<Resources | null>(null);
   useEffect(() => {
     live.current = res;
     return () => {
@@ -412,16 +425,27 @@ export default function World({ settings, tier, reduced, onReady }: WorldProps) 
   }, [settings.beans]);
 
   // Environment map: baked once from code-made light panels (medium/high only).
+  // Baked in a task of its own (after a yield); the shader warm-up below waits for it.
+  const envDone = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    if (!settings.envSize) return;
-    const rt = bakeEnvironment(gl, settings.envSize);
+    if (!settings.envSize) {
+      envDone.current = Promise.resolve();
+      return;
+    }
+    let cancelled = false;
+    let rt: THREE.WebGLRenderTarget | null = null;
     const s = getState().scene;
-    s.environment = rt.texture;
-    s.environmentIntensity = 0.85;
-    invalidate();
+    envDone.current = nextTask().then(() => {
+      if (cancelled) return;
+      rt = bakeEnvironment(gl, settings.envSize);
+      s.environment = rt.texture;
+      s.environmentIntensity = 0.85;
+      invalidate();
+    });
     return () => {
+      cancelled = true;
       s.environment = null;
-      rt.dispose();
+      rt?.dispose();
     };
   }, [gl, getState, settings.envSize, invalidate]);
 
@@ -473,7 +497,11 @@ export default function World({ settings, tier, reduced, onReady }: WorldProps) 
         }),
       );
     };
-    gl.compileAsync(scene, camera).then(reveal, reveal);
+    // yield before compiling: mounting the scene and baking the environment were tasks of their own
+    envDone.current
+      .then(() => nextTask())
+      .then(() => (cancelled ? undefined : gl.compileAsync(scene, camera)))
+      .then(reveal, reveal);
     return () => {
       cancelled = true;
       stage.invalidate = () => {};

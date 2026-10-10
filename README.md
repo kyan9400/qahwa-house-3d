@@ -25,12 +25,15 @@ Live: https://qahwa-house-3d.vercel.app
   the tab is visible), a GPU quality tier chosen before the canvas exists, an idle-aware adaptive pixel ratio, one
   scroll smoothing step in the render loop, `compileAsync` warm-up behind the SVG poster, no per-frame allocations,
   reduced motion by default when the OS asks with a "Turn on full motion" toggle, and a designed SVG poster when WebGL
-  is missing or the context is lost. Append `?quality=low|medium|high` or `?motion=full|reduced` to test.
+  is missing, the context is lost or the GPU is a software renderer (SwiftShader, llvmpipe, ...). Append `?quality=low|medium|high` or `?motion=full|reduced` to test.
 
 ## Tech stack
 Next.js 16 (App Router, TypeScript, `src/`), React 19, three.js 0.186 + @react-three/fiber 9, Tailwind CSS 4.
-The 3D scene is a client component loaded with `next/dynamic(..., { ssr: false })` after the page has loaded and the
-main thread is idle, so the HTML renders instantly.
+The 3D scene is a client component loaded with `next/dynamic(..., { ssr: false })` only after window `load` and an
+idle callback, so the HTML (hero headline and lede included, with no intro animation) renders instantly. A cheap GPU
+probe (a throwaway WebGL context, no three.js) runs first: software renderers keep the poster and never download the
+3D chunk (`?quality=` forces it on). Geometry, painted textures, the environment bake and the shader compile each run
+in their own task, yielding to the browser in between.
 
 Versions are pinned exactly as in the shared stack file. Deliberate differences: `@react-three/drei`, `gsap`/`@gsap/react`,
 `lenis` and `@react-three/postprocessing` are not installed. Native scroll with one damping step inside the render loop

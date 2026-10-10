@@ -2,29 +2,42 @@
 
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useState } from "react";
-import { detectQuality, TIERS } from "@/lib/quality";
+import { TIERS, type QualityResult } from "@/lib/quality";
 import { getMotion } from "@/lib/motion";
-import World from "./World";
+import World, { createResources, type Resources } from "./World";
 
 interface Props {
+  quality: QualityResult;
   onReady: () => void;
   onFail: () => void;
 }
 
 /**
-  Lazy 3D entry (loaded with next/dynamic, ssr:false).
-  The quality tier and motion mode are decided here, BEFORE the Canvas and its WebGL context exist.
+  Lazy 3D entry (loaded with next/dynamic, ssr:false, only after the GPU probe in Stage said yes).
+  The quality tier and motion mode are decided BEFORE the Canvas and its WebGL context exist.
+  Geometry and painted textures are built first, in small steps that yield to the browser, so no single task
+  blocks input for long; only then is the WebGL context created.
 */
-export default function Experience({ onReady, onFail }: Props) {
-  const [quality] = useState(detectQuality);
+export default function Experience({ quality, onReady, onFail }: Props) {
   const [reduced] = useState(() => getMotion() === "reduced");
+  const settings = TIERS[quality.tier];
+  const [built, setBuilt] = useState<{ settings: typeof settings; res: Resources } | null>(null);
 
   useEffect(() => {
-    if (!quality.webgl) onFail();
-  }, [quality.webgl, onFail]);
+    let cancelled = false;
+    createResources(settings).then(
+      (res) => {
+        if (cancelled) res.dispose();
+        else setBuilt({ settings, res });
+      },
+      () => !cancelled && onFail(),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [settings, onFail]);
 
-  if (!quality.webgl) return null;
-  const settings = TIERS[quality.tier];
+  if (!built || built.settings !== settings) return null;
 
   return (
     <Canvas
@@ -46,7 +59,7 @@ export default function Experience({ onReady, onFail }: Props) {
       }}
       style={{ position: "absolute", inset: 0, touchAction: "pan-y" }}
     >
-      <World settings={settings} tier={quality.tier} reduced={reduced} onReady={onReady} />
+      <World res={built.res} settings={settings} tier={quality.tier} reduced={reduced} onReady={onReady} />
     </Canvas>
   );
 }

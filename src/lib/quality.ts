@@ -1,8 +1,10 @@
 /*
   Quality tiers — decided BEFORE the Canvas is created.
-  1. A throwaway WebGL2 context tells us whether 3D works at all and which GPU this is.
-  2. Software renderers -> low. Integrated laptop / phone GPUs and touch devices -> at most medium.
-  3. ?quality=low|medium|high overrides everything.
+  1. A throwaway WebGL2 context (no three.js, created after the page has loaded) tells us whether 3D works at all
+     and which GPU this is.
+  2. Software renderers (SwiftShader, llvmpipe, ...) -> no 3D at all: the poster stays.
+     Integrated laptop / phone GPUs and touch devices -> at most medium.
+  3. ?quality=low|medium|high overrides everything and forces the 3D on, even on a software renderer.
 */
 
 export type Tier = "low" | "medium" | "high";
@@ -23,10 +25,17 @@ export const TIERS: Record<Tier, TierSettings> = {
 };
 
 export interface QualityResult {
+  /** a WebGL2 context could be created (with ?quality= forced, even a slow one) */
   webgl: boolean;
+  /** software rasteriser, or the browser flagged a major performance caveat */
+  software: boolean;
+  /** ?quality=low|medium|high was given: show the 3D whatever the GPU */
+  forced: boolean;
   tier: Tier;
   gpu: string;
 }
+
+const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render|mesa offscreen/i;
 
 function forcedTier(): Tier | null {
   const q = new URLSearchParams(window.location.search).get("quality");
@@ -50,24 +59,52 @@ function gpuName(gl: WebGL2RenderingContext): string {
   return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || name) : name;
 }
 
-export function detectQuality(): QualityResult {
-  let gl: WebGL2RenderingContext | null = null;
+function context(options: WebGLContextAttributes): WebGL2RenderingContext | null {
   try {
-    gl = document.createElement("canvas").getContext("webgl2", { powerPreference: "high-performance" });
+    return document.createElement("canvas").getContext("webgl2", options);
   } catch {
-    gl = null;
+    return null;
   }
-  if (!gl) return { webgl: false, tier: "low", gpu: "" };
+}
+
+let cached: QualityResult | null = null;
+
+/** Client only, cached. Cheap (one tiny throwaway context, no three.js); call it after 'load', never during hydration. */
+export function detectQuality(): QualityResult {
+  if (cached) return cached;
+  const forced = forcedTier();
+
+  // the browser refuses this when it would fall back to a slow (software) path
+  let gl = context({ failIfMajorPerformanceCaveat: true });
+  let caveat = false;
+  if (!gl) {
+    caveat = true;
+    // a second context is only worth it when the URL insists on 3D anyway
+    if (forced) gl = context({});
+  }
+  if (!gl) {
+    cached = { webgl: false, software: caveat, forced: forced !== null, tier: "low", gpu: "" };
+    return cached;
+  }
 
   const gpu = gpuName(gl);
   gl.getExtension("WEBGL_lose_context")?.loseContext();
+  const software = caveat || SOFTWARE_GPU.test(gpu);
 
-  const forced = forcedTier();
-  if (forced) return { webgl: true, tier: forced, gpu };
+  if (forced) {
+    cached = { webgl: true, software, forced: true, tier: forced, gpu };
+    return cached;
+  }
 
   let tier = hardwareGuess();
-  if (/swiftshader|llvmpipe|software|basic render/i.test(gpu)) tier = "low";
+  if (software) tier = "low";
   else if (/intel|uhd|iris|mali|adreno|powervr|radeon\(tm\) graphics|apple gpu/i.test(gpu) && tier === "high")
     tier = "medium";
-  return { webgl: true, tier, gpu };
+  cached = { webgl: true, software, forced: false, tier, gpu };
+  return cached;
+}
+
+/** Software renderers keep the poster (the 3D chunk is never loaded) unless ?quality= forces the 3D on. */
+export function wants3d(q: QualityResult): boolean {
+  return q.webgl && (!q.software || q.forced);
 }

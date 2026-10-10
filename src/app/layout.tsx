@@ -19,6 +19,8 @@ const manrope = Manrope({
 const reem = Reem_Kufi({
   subsets: ["arabic"],
   display: "swap",
+  // decorative Arabic lettering only (logo mark, menu titles): not needed for the hero paint, so not preloaded
+  preload: false,
   variable: "--font-reem",
 });
 

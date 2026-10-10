@@ -46,7 +46,7 @@ One `<Canvas>` lives in a sticky, full-viewport layer behind sections 1–2.
   HDRI downloads, no drei) for glaze reflections on medium/high. Blob shadows are canvas-generated radial textures.
 
 **Quality tiers** (decided before the Canvas exists — GPU probe via `WEBGL_debug_renderer_info`, touch devices capped at
-medium, software renderers → low, `?quality=` override):
+medium, software renderers → no 3D at all (poster), `?quality=` override that also forces 3D on):
 
 | | high | medium | low |
 |---|---|---|---|
@@ -71,7 +71,8 @@ first frame is drawn; then the canvas fades in (opacity only).
 override): no orbiting beans (resting on the tray), steam frozen as a still wisp, no pour animation (vessels shown full),
 camera and tray *cut* to their scroll positions instead of sweeping.
 
-**No WebGL / context lost:** a designed inline SVG poster of the cup, saucer, steam and beans in the same palette.
+**No WebGL / context lost / software renderer** (SwiftShader, llvmpipe, "Microsoft Basic Render", or a
+`failIfMajorPerformanceCaveat` refusal; the 3D chunk is then never downloaded): a designed inline SVG poster of the cup, saucer, steam and beans in the same palette.
 The page stays fully usable — the menu text carries all information.
 
 ## Design system
@@ -167,7 +168,9 @@ Alhassan Alfarran (portfolio, GitHub) · motion toggle.
 
 ## Performance budget
 - First-load JS for `/` < 250 KB gzip excluding the lazy 3D chunk (target ≈ 150 KB).
-- Lazy 3D chunk (three + fiber + scene) loaded after hydration via `next/dynamic` `ssr:false`.
-- Zero image requests above the fold (SVG poster is inline). Fonts: 3 families, `display: swap`, Arabic subset only for Reem Kufi.
+- Lazy 3D chunk (three + fiber + scene) via `next/dynamic` `ssr:false`, requested only after window `load` +
+  `requestIdleCallback` and never for software renderers; scene setup yields between steps and before `compileAsync`.
+- LCP element: hero headline / lede, server-rendered with no JS or CSS reveal (only the eyebrow and buttons rise in).
+- Zero image requests above the fold (SVG poster is inline). Fonts: 3 families, `display: swap`, Arabic subset only for Reem Kufi (not preloaded: decorative only).
 - Draw calls < 40; triangles < 120k on high, < 50k on low; no shadow maps; no post-processing.
 - Lighthouse mobile ≥ 85 performance, ≥ 95 accessibility / best practices / SEO.

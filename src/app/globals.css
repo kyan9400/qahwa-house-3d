@@ -257,15 +257,10 @@ body {
   }
 }
 
-/* hero entrance (opacity/transform only) */
+/* hero entrance (opacity/transform only) for the small eyebrow and the buttons. Never on the headline or the
+   lede: they are the LCP candidates and paint straight from the server HTML, with no reveal. */
 .rise {
   animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-.rise-2 {
-  animation-delay: 0.12s;
-}
-.rise-3 {
-  animation-delay: 0.24s;
 }
 .rise-4 {
   animation-delay: 0.36s;

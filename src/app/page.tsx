@@ -94,12 +94,12 @@ export default function Home() {
               <div className={container}>
                 <div className="max-w-[560px]">
                   <p className="eyebrow rise text-saffron">Specialty coffee · Old Port District</p>
-                  <h1 id="hero-title" className="display-xl rise rise-2 mt-4 text-crema">
+                  <h1 id="hero-title" className="display-xl mt-4 text-crema">
                     Poured slowly.
                     <br />
                     <em className="font-normal italic text-saffron">Shared generously.</em>
                   </h1>
-                  <p className="rise rise-3 mt-6 max-w-[46ch] text-lg leading-relaxed text-sand">
+                  <p className="mt-6 max-w-[46ch] text-lg leading-relaxed text-sand">
                     Qahwa House roasts single-origin beans in small batches and serves them two ways: the
                     cardamom-and-saffron qahwa of our grandmothers, and the precise pour-overs of the modern bar.
                     Pull up a cushion.

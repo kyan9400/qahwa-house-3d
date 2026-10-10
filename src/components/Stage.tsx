@@ -2,41 +2,32 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { detectQuality, wants3d, type QualityResult } from "@/lib/quality";
+import { afterLoadIdle } from "@/lib/schedule";
 import { stage } from "@/lib/stage-store";
 import Poster from "./Poster";
 
-// The whole 3D bundle (three + fiber + scene) is a separate chunk, loaded after the page is interactive.
+// The whole 3D bundle (three + fiber + scene) is a separate chunk. It is only requested once the component renders,
+// which happens after window load + an idle callback, and never for software renderers.
 const Experience = dynamic(() => import("@/three/Experience"), { ssr: false });
 
 /**
   The sticky 3D layer behind the hero and the menu, plus the scroll controller that feeds it.
-  The poster is server-rendered, so the page looks finished before any 3D code arrives.
+  The poster is server-rendered, so the page looks finished before any 3D code arrives; it stays up until the scene
+  has compiled its shaders and drawn, then fades (opacity only). No WebGL / software GPU / lost context: poster only.
 */
 export default function Stage({ children }: { children: React.ReactNode }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [mount, setMount] = useState(false);
+  const [quality, setQuality] = useState<QualityResult | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const onReady = useCallback(() => setReady(true), []);
   const onFail = useCallback(() => setFailed(true), []);
 
-  // Start loading the 3D only after the page has loaded and the main thread is idle.
-  useEffect(() => {
-    let idleId = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const start = () => {
-      if ("requestIdleCallback" in window) idleId = window.requestIdleCallback(() => setMount(true), { timeout: 2500 });
-      else timer = setTimeout(() => setMount(true), 300);
-    };
-    if (document.readyState === "complete") start();
-    else window.addEventListener("load", start, { once: true });
-    return () => {
-      window.removeEventListener("load", start);
-      if (idleId) window.cancelIdleCallback(idleId);
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
+  // Only after the page has loaded and the main thread is idle: probe the GPU (tiny throwaway context, no three.js),
+  // then mount (= download) the 3D chunk unless this is a software renderer.
+  useEffect(() => afterLoadIdle(() => setQuality(detectQuality())), []);
 
   // Scroll -> stage store. One passive listener, at most one layout read per animation frame.
   useEffect(() => {
@@ -87,7 +78,7 @@ export default function Stage({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const showCanvas = mount && !failed;
+  const showCanvas = quality !== null && wants3d(quality) && !failed;
   return (
     <div ref={wrapRef} className="relative">
       <div className="stage-layer pointer-events-none" aria-hidden="true">
@@ -96,7 +87,7 @@ export default function Stage({ children }: { children: React.ReactNode }) {
         </div>
         {showCanvas && (
           <div className="stage-canvas" data-ready={ready}>
-            <Experience onReady={onReady} onFail={onFail} />
+            <Experience quality={quality} onReady={onReady} onFail={onFail} />
           </div>
         )}
         {showCanvas && !ready && (
