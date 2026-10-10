@@ -1,7 +1,7 @@
 # Credits
 
 Everything visual in this project — the 3D tray, the four lathe-geometry vessels, the pour, steam and beans, the
-painted wood / crema / shadow textures, the no-WebGL poster, the street plan, the favicon and the Open Graph image — is
+painted wood / crema / shadow textures, the no-WebGL poster, the street plan, the favicon, and the Open Graph / Twitter preview image (a screenshot of this site) — is
 made in code for this project and is covered by the repository's LICENSE. No 3D models, textures, HDRIs, photos or audio
 are downloaded or bundled, and nothing is fetched from a third-party CDN at runtime.
 

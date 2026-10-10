@@ -309,3 +309,26 @@ html[data-motion="reduced"] .menu-item {
   background-size: 28px 14px;
   opacity: 0.55;
 }
+
+/* small-screen nav panel: solid background (no backdrop-filter), opacity/transform only */
+.mobile-nav {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0s linear 0.2s;
+}
+.mobile-nav[data-open="true"] {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0s;
+}
+html[data-motion="reduced"] .mobile-nav {
+  transition: none;
+}

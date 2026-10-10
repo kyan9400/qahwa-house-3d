@@ -43,7 +43,7 @@ drei's `<Environment>`. This keeps the 3D chunk smaller.
 
 ## Project layout
 ```
-src/app/          layout, page, 404, globals.css (design tokens), icon.svg, OG image, robots, sitemap
+src/app/          layout, page, 404, globals.css (design tokens), icon.svg, social preview (opengraph-image.png / twitter-image.png, a screenshot of the live site), robots, sitemap
 src/components/   Stage (sticky 3D layer + scroll controller), Poster, Header, MotionToggle, MotionToast
 src/three/        Experience (Canvas + tier), World (scene, frame loop), geometry, shaders, textures
 src/lib/          quality tiers, motion preference, shared stage store

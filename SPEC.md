@@ -162,7 +162,7 @@ Alhassan Alfarran (portfolio, GitHub) · motion toggle.
 ## Assets & licenses
 - 3D: 100 % procedural code (lathe/torus/cylinder/instanced geometry, custom shaders).
 - Textures: generated at runtime on `<canvas>` (wood rings, crema rosetta, blob shadow, soft particle sprite in shader).
-- Poster, favicon (`app/icon.svg`) and OG image (`next/og` `ImageResponse`): drawn in code.
+- Poster and favicon (`app/icon.svg`): drawn in code. Social preview (`app/opengraph-image.png`, `app/twitter-image.png`): a 1200×630 screenshot of the live site.
 - Fonts: Fraunces, Manrope, Reem Kufi — SIL Open Font License 1.1, via `next/font/google`.
 - No external images, models, HDRIs or audio. No runtime CDN requests.
 

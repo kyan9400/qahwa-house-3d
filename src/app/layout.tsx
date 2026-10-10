@@ -24,7 +24,7 @@ const reem = Reem_Kufi({
   variable: "--font-reem",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://qahwa-house-3d.vercel.app";
+const siteUrl = "https://qahwa-house-3d.vercel.app";
 const description =
   "Qahwa House roasts single-origin coffee in small batches and serves it two ways: cardamom-and-saffron qahwa and precise modern pour-overs. A concept site with a real-time 3D pour.";
 
