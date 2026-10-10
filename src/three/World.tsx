@@ -380,6 +380,12 @@ export default function World({ settings, tier, reduced, onReady }: WorldProps) 
       camPos: new THREE.Vector3(),
       camTarget: new THREE.Vector3(),
       heroPos: new THREE.Vector3(0, 1.05, 3.0),
+      // wide screens: pulled back and swung to the right of the cup so the whole cup, saucer and
+      // orbiting beans sit in the right half and the copy column on the left stays over calm background
+      heroWide: new THREE.Vector3(2.38, 1.8, 4.04),
+      // portrait: the close-up, pulled back far enough to keep the rim and saucer in frame
+      heroTall: new THREE.Vector3(0, 0.3 + 0.75 * 1.35, 1.2 + 1.8 * 1.35),
+      heroMid: new THREE.Vector3(0, 1.05, 3.0),
       heroTarget: new THREE.Vector3(0, 0.3, RING),
       menuPos: new THREE.Vector3(0, 2.75, 5.5),
       menuTarget: new THREE.Vector3(0, 0.25, 0.3),
@@ -521,9 +527,16 @@ export default function World({ settings, tier, reduced, onReady }: WorldProps) 
       a.vw = w;
       a.vh = h;
       const aspect = w / h;
-      if (w >= 900 && aspect > 1.05) cam.setViewOffset(w, h, -w * 0.19, 0, w, h);
-      else if (aspect < 1) cam.setViewOffset(w, h, 0, h * 0.17, w, h);
-      else cam.setViewOffset(w, h, -w * 0.08, h * 0.06, w, h);
+      if (w >= 900 && aspect > 1.05) {
+        cam.setViewOffset(w, h, -w * 0.25, 0, w, h);
+        tmp.heroPos.copy(tmp.heroWide);
+      } else if (aspect < 1) {
+        cam.setViewOffset(w, h, 0, h * 0.17, w, h);
+        tmp.heroPos.copy(tmp.heroTall);
+      } else {
+        cam.setViewOffset(w, h, -w * 0.08, h * 0.06, w, h);
+        tmp.heroPos.copy(tmp.heroMid);
+      }
       cam.updateProjectionMatrix();
     }
     const heroTarget = reduced ? (stage.heroProgress > 0.5 ? 1 : 0) : smoothstep(stage.heroProgress);

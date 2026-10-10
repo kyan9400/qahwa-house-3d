@@ -89,8 +89,8 @@ export default function Home() {
       <main id="main" tabIndex={-1} className="outline-none">
         <Stage>
           {/* ---------------------------------------------------------- hero */}
-          <section id="top" aria-labelledby="hero-title" className="relative flex min-h-[100svh] items-end min-[900px]:items-center">
-            <div className="over-canvas w-full pb-12 pt-24 min-[900px]:pb-0 min-[900px]:pt-16">
+          <section id="top" aria-labelledby="hero-title" className="hero-scrim relative flex min-h-[100svh] items-end min-[900px]:items-center">
+            <div className="over-canvas relative w-full pb-12 pt-24 min-[900px]:pb-0 min-[900px]:pt-16">
               <div className={container}>
                 <div className="max-w-[560px]">
                   <p className="eyebrow rise text-saffron">Specialty coffee · Old Port District</p>

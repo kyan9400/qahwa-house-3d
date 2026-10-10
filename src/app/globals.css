@@ -225,6 +225,25 @@ body {
   }
 }
 
+/* hero copy on wide screens: a soft gradient from the left keeps the column calm over the canvas
+   (plain gradient, no backdrop-filter; fades out at the bottom so no edge shows while scrolling) */
+@media (min-width: 900px) and (min-aspect-ratio: 21/20) {
+  .hero-scrim::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      rgba(26, 17, 11, 0.62) 0%,
+      rgba(26, 17, 11, 0.42) 38%,
+      rgba(26, 17, 11, 0) 60%
+    );
+    -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+  }
+}
+
 /* menu rows: the active drink is highlighted */
 .menu-item {
   transition: opacity 0.4s ease;
