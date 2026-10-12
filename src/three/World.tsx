@@ -15,7 +15,10 @@ import {
   TUMBLER,
   VESSEL_SPECS,
   beanGeometry,
+  cardamomGeometry,
   cupHandle,
+  dateGeometry,
+  dishProfile,
   dallahFittings,
   dallahProfile,
   innerRadiusAt,
@@ -29,14 +32,20 @@ import {
   type VesselSpec,
 } from "./geometry";
 import {
+  beamTexture,
   cremaTexture,
+  fadeTexture,
   glazeRoughTexture,
   radialTexture,
   speckleTexture,
   stripTexture,
+  tableTexture,
+  windowLightTexture,
   woodTexture,
 } from "./textures";
 import {
+  dustFragment,
+  dustVertex,
   steamFragment,
   steamVertex,
   streamFragment,
@@ -54,6 +63,24 @@ const FILL = 2.5;
 const LIFT = 0.42;
 const ART = 0.9;
 const KEY_LIGHT = new THREE.Vector3(-3, 5, 4);
+/** the window: low, behind and to the left of the tray; it throws the long shadows and the rim light */
+const WINDOW_LIGHT = new THREE.Vector3(-4.2, 3.6, -3.4);
+const TABLE_Y = -0.0755; // the tray's foot rests on the table
+
+/*
+  Lighting moods, one per chapter: the hero, then one per drink at the front of the tray.
+  [window colour, window strength, key colour, key strength, fill (hemisphere), window patch on the table]
+*/
+type Mood = [string, number, string, number, number, number];
+const MOODS: Mood[] = [
+  ["#ffc477", 3.4, "#ffe0b8", 1.25, 0.42, 1], // hero: late-afternoon sun through the lattice
+  ["#ffd39a", 3.0, "#fff0dc", 1.45, 0.5, 0.85], // latte: bright morning
+  ["#ff9f45", 3.8, "#ffc98f", 0.95, 0.34, 1.15], // qahwa: deep saffron, almost evening
+  ["#fff2de", 2.7, "#e6efff", 1.5, 0.52, 0.7], // pour-over: clean daylight
+  ["#9fb8ff", 1.7, "#ffb070", 1.5, 0.32, 0.45], // cold brew: blue dusk, a warm lamp in front
+];
+/** which Mood entries the eased numbers follow: window, key, fill, patch */
+const MOOD_SLOTS = [1, 3, 4, 5] as const;
 
 // the dallah pour (qahwa only)
 const DALLAH_TRAVEL = 0.85; // s, lift (0.35) + glide and tilt (0.5)
@@ -131,7 +158,9 @@ export async function createResources(settings: TierSettings) {
   const stream = keep(new THREE.CylinderGeometry(1, 0.85, 1, 14, 24, true).translate(0, -0.5, 0));
   const bean = keep(beanGeometry());
   const ice = keep(new THREE.BoxGeometry(0.15, 0.13, 0.15, 1, 1, 1));
-  const date = keep(new THREE.SphereGeometry(1, 16, 12));
+  const date = keep(dateGeometry());
+  const pod = keep(cardamomGeometry());
+  const dish = keep(lathe(dishProfile(0.36), Math.min(seg, 48)));
   const plane = keep(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
 
   await nextTask();
@@ -205,6 +234,8 @@ export async function createResources(settings: TierSettings) {
   // stoneware speckle (medium + high): roughness and bump in one painted map
   const speckled = settings.envSize > 0;
   const latteRough = speckled ? keep(glazeRoughTexture(latteShape.footV + 0.015)) : null;
+  // the finjan gets its own speckle map too, so both glazes share one shader program (faster start-up)
+  const finjanRough = speckled ? keep(glazeRoughTexture(finjanShape.footV + 0.012, 0.22)) : null;
   const saucerSpeckle = speckled ? keep(speckleTexture(256, 0.5)) : null;
   if (saucerSpeckle) saucerSpeckle.repeat.set(6, 2);
 
@@ -222,7 +253,7 @@ export async function createResources(settings: TierSettings) {
     };
     return keep(
       physical
-        ? new THREE.MeshPhysicalMaterial({ ...params, clearcoat: 0.6, clearcoatRoughness: 0.15 })
+        ? new THREE.MeshPhysicalMaterial({ ...params, clearcoat: 1, clearcoatRoughness: 0.06 })
         : new THREE.MeshStandardMaterial(params),
     );
   };
@@ -257,7 +288,7 @@ export async function createResources(settings: TierSettings) {
         }),
   );
 
-  const bodyMats = [glaze(latteStrip, 0.38, latteRough), glaze(finjanStrip, 0.22, null), glass, glass];
+  const bodyMats = [glaze(latteStrip, 0.38, latteRough), glaze(finjanStrip, 0.22, finjanRough), glass, glass];
   // saucer speckle averages 0.5, so roughness 0.7 / 0.5 give the old 0.35 / 0.25
   const saucerMat = (color: string, rough: number) =>
     keep(
@@ -343,36 +374,27 @@ export async function createResources(settings: TierSettings) {
     }),
   );
 
-  const beanMat = keep(new THREE.MeshStandardMaterial({ color: "#4a2816", roughness: 0.42, metalness: 0.05 }));
+  // freshly roasted beans: a dark, oily sheen
+  const beanMat = keep(new THREE.MeshStandardMaterial({ color: "#3e1f0f", roughness: 0.36, metalness: 0.05 }));
   const iceMat = keep(
-    seeThrough
-      ? new THREE.MeshPhysicalMaterial({
-          color: "#f4efe8",
-          roughness: 0.18,
-          transparent: true,
-          opacity: 0.42,
-          depthWrite: false,
-          envMapIntensity: 1.5,
-        })
-      : new THREE.MeshPhysicalMaterial({ color: "#d9d3ca", roughness: 0.08, clearcoat: 1, envMapIntensity: 1.6 }),
+    new THREE.MeshStandardMaterial({
+      color: seeThrough ? "#f4efe8" : "#d9d3ca",
+      roughness: seeThrough ? 0.18 : 0.08,
+      transparent: seeThrough,
+      opacity: seeThrough ? 0.42 : 1,
+      depthWrite: !seeThrough,
+      envMapIntensity: 1.6,
+    }),
   );
-  const dateMat = keep(new THREE.MeshStandardMaterial({ color: "#4f2312", roughness: 0.3 }));
+  const dateMat = keep(new THREE.MeshStandardMaterial({ color: "#4a1d0c", roughness: 0.3 }));
   const traySide = keep(new THREE.MeshStandardMaterial({ color: "#3b2315", roughness: 0.55 }));
-  // lacquered walnut floor: clearcoat on high, grain-driven roughness on medium/high
+  // lacquered walnut floor (grain-driven roughness on medium/high); one standard program keeps start-up quick
   const trayTopMat = keep(
-    physical
-      ? new THREE.MeshPhysicalMaterial({
-          map: wood.map,
-          roughness: 1,
-          roughnessMap: wood.rough,
-          clearcoat: 0.35,
-          clearcoatRoughness: 0.3,
-        })
-      : new THREE.MeshStandardMaterial({
-          map: wood.map,
-          roughness: settings.envSize ? 1 : 0.5,
-          roughnessMap: settings.envSize ? wood.rough : null,
-        }),
+    new THREE.MeshStandardMaterial({
+      map: wood.map,
+      roughness: settings.envSize ? 0.85 : 0.5,
+      roughnessMap: settings.envSize ? wood.rough : null,
+    }),
   );
   // brass: brushed (anisotropic) on high; plain metal on medium; low has no environment map, so less metallic
   const brassMat = keep(
@@ -419,7 +441,140 @@ export async function createResources(settings: TierSettings) {
     glow = { spout: sprite(0.55), rim: sprite(0.4), halo: sprite(0) };
   }
 
+  /* ---------- the setting: the café table, the window light on it, the beam and its dust */
+  await nextTask();
+  const table = tableTexture(settings.envSize ? 1024 : 512);
+  keep(table.map);
+  keep(table.rough);
+  table.map.repeat.set(3, 3);
+  table.rough.repeat.set(3, 3);
+  const fade = keep(fadeTexture());
+  // depth-of-field look: the grain is sampled from blurrier mip levels the further it is from the focus distance
+  const focus = { value: 4 };
+  const tableParams = {
+    map: table.map,
+    roughness: settings.envSize ? 1 : 0.6,
+    roughnessMap: settings.envSize ? table.rough : null,
+    alphaMap: fade,
+    transparent: true,
+  };
+  const tableMat = keep(new THREE.MeshStandardMaterial(tableParams));
+  // The lattice window's light, projected along the light direction onto the table and the tray floor
+  // (world space, so the pattern stays put while the tray turns). Shared uniforms: the moods tint it.
+  const windowTex = keep(windowLightTexture(settings.envSize ? 512 : 256));
+  const lightTravel = WINDOW_LIGHT.clone().negate().normalize();
+  const win = {
+    uWinMap: { value: windowTex },
+    uWinColor: { value: new THREE.Color(MOODS[0][0]) },
+    uWinStrength: { value: 0 },
+    uWinDir: { value: lightTravel },
+    uWinCenter: { value: new THREE.Vector2(-0.75, -0.55) },
+    uWinAxis: { value: new THREE.Vector2(lightTravel.x, lightTravel.z).normalize() },
+    uWinSize: { value: new THREE.Vector2(2.3, 3.0) },
+  };
+  const addWindowLight = (mat: THREE.Material, key: string, dof: boolean) => {
+    mat.customProgramCacheKey = () => key;
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, win);
+      if (dof) shader.uniforms.uFocus = focus;
+      shader.vertexShader = shader.vertexShader
+        .replace("void main() {", "varying vec3 vWinPos;\nvoid main() {")
+        .replace("#include <project_vertex>", "#include <project_vertex>\n\tvWinPos = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      let f = shader.fragmentShader
+        .replace(
+          "void main() {",
+          `varying vec3 vWinPos;
+uniform sampler2D uWinMap;
+uniform vec3 uWinColor;
+uniform float uWinStrength;
+uniform vec3 uWinDir;
+uniform vec2 uWinCenter;
+uniform vec2 uWinAxis;
+uniform vec2 uWinSize;
+uniform float uFocus;
+void main() {`,
+        )
+        .replace(
+          "#include <opaque_fragment>",
+          `{
+  vec2 q = vWinPos.xz - uWinDir.xz * (vWinPos.y / uWinDir.y);
+  vec2 d = q - uWinCenter;
+  vec2 wuv = vec2(dot(d, vec2(-uWinAxis.y, uWinAxis.x)) / uWinSize.x, dot(d, uWinAxis) / uWinSize.y) + 0.5;
+  if (wuv.x > 0.0 && wuv.x < 1.0 && wuv.y > 0.0 && wuv.y < 1.0) {
+    outgoingLight += diffuseColor.rgb * texture2D(uWinMap, wuv).rgb * uWinColor * uWinStrength;
+  }
+}
+#include <opaque_fragment>`,
+        );
+      if (dof)
+        f = f
+          // a pool of light around the tray: the table sinks into shadow toward the edges of the frame
+          .replace(
+            "#include <opaque_fragment>",
+            "outgoingLight *= mix(1.0, 0.1, smoothstep(1.7, 4.6, length(vWinPos.xz - vec2(0.3, 0.2))));\n#include <opaque_fragment>",
+          )
+          .replace(
+          "vec4 sampledDiffuseColor = texture2D( map, vMapUv );",
+          "float dofBlur = clamp(abs(length(vViewPosition) - uFocus) * 1.5 - 0.3, 0.0, 4.5);\n\tvec4 sampledDiffuseColor = texture2D( map, vMapUv, dofBlur );",
+        );
+      shader.fragmentShader = f;
+    };
+  };
+  addWindowLight(tableMat, "qh-table", true);
+  addWindowLight(trayTopMat, "qh-tray", false);
+
+  let beam: { mat: THREE.MeshBasicMaterial; dustGeo: THREE.BufferGeometry; dustMat: THREE.ShaderMaterial } | null = null;
+  if (settings.dust > 0) {
+    const mat = keep(
+      new THREE.MeshBasicMaterial({
+        map: keep(beamTexture()),
+        color: new THREE.Color(MOODS[0][0]),
+        transparent: true,
+        opacity: 0.1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    const dustGeo = keep(new THREE.BufferGeometry());
+    const rd = rng(77);
+    const ds = new Float32Array(settings.dust * 4);
+    for (let k = 0; k < ds.length; k++) ds[k] = rd();
+    dustGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(settings.dust * 3), 3));
+    dustGeo.setAttribute("aSeed", new THREE.BufferAttribute(ds, 4));
+    dustGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 50);
+    const dustMat = keep(
+      new THREE.ShaderMaterial({
+        vertexShader: dustVertex,
+        fragmentShader: dustFragment,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          uTime: { value: 0 },
+          uCenter: { value: new THREE.Vector3(-1.3, 1.25, -0.9) },
+          uSize: { value: new THREE.Vector3(1.6, 2.6, 1.6) },
+          uSlant: { value: new THREE.Vector3(-1.4, 0, -1.1) },
+          uViewportH: { value: 800 },
+          uColor: { value: new THREE.Color(MOODS[0][0]) },
+          uOpacity: { value: 0 },
+        },
+      }),
+    );
+    beam = { mat, dustGeo, dustMat };
+  }
+  const podMat = keep(new THREE.MeshStandardMaterial({ color: "#a3a868", roughness: 0.7 }));
+  const dishMat = keep(new THREE.MeshStandardMaterial({ color: "#2f5a49", roughness: 0.2 }));
+
   return {
+    focus,
+    tableMat,
+    win,
+    beam,
+    pod,
+    podMat,
+    dish,
+    dishMat,
     bodies,
     saucers,
     liquids,
@@ -480,6 +635,9 @@ function bakeEnvironment(gl: THREE.WebGLRenderer, size: number) {
     panel("#ffcf8a", 2.0, [-6, 2, 3], [2, 6]), // window strip left
     panel("#e3a53c", 1.6, [5, 1.5, -4], [3, 4]), // saffron rim
     panel("#f2e5cf", 0.8, [0, 1, 7], [6, 1.5]), // fill from camera side
+    panel("#ffd9a0", 7.0, [-5.5, 3, -4.5], [1.1, 3.2]), // the lattice window (three tall panes)
+    panel("#ffd9a0", 7.0, [-4.2, 3, -5.6], [1.1, 3.2]),
+    panel("#ffd9a0", 7.0, [-6.6, 3, -3.2], [1.1, 3.2]),
   ];
   const pm = new THREE.PMREMGenerator(gl);
   const rt = pm.fromScene(env, 0.035, 0.1, 50, { size });
@@ -531,6 +689,11 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
   const rimRef = useRef<THREE.DirectionalLight>(null);
   const pointRef = useRef<THREE.PointLight>(null);
   const spotRef = useRef<THREE.SpotLight>(null);
+  const backRef = useRef<THREE.DirectionalLight>(null);
+  const rootRef = useRef<THREE.Group>(null);
+  const dustRef = useRef<THREE.Points>(null);
+  const scatterRef = useRef<THREE.InstancedMesh>(null);
+  const podsRef = useRef<THREE.InstancedMesh>(null);
 
   const pointBase = tier === "low" ? 3 : 2;
   const startLight = reduced ? 1 : 0.15; // the lights switch on when the scene is revealed
@@ -562,6 +725,8 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     calmSince: 0,
     lastRaise: -1e9,
     bounces: 0,
+    // the current lighting mood (eased toward the chapter's mood)
+    mood: [MOODS[0][1], MOODS[0][3], MOODS[0][4], MOODS[0][5]],
   });
 
   // Reused objects: no allocations inside useFrame.
@@ -577,12 +742,26 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
       heroPos: new THREE.Vector3(0, 1.05, 3.0),
       // wide screens: pulled back and swung to the right of the cup so the whole cup, saucer and
       // orbiting beans sit in the right half and the copy column on the left stays over calm background
-      heroWide: new THREE.Vector3(2.38, 1.8, 4.04),
+      heroWide: new THREE.Vector3(2.55, 1.95, 4.4),
       // portrait: the close-up, pulled back far enough to keep the rim and saucer in frame
-      heroTall: new THREE.Vector3(0, 0.3 + 0.75 * 1.35, 1.2 + 1.8 * 1.35),
+      heroTall: new THREE.Vector3(0.45, 0.3 + 0.75 * 1.7, 1.2 + 1.8 * 1.7),
       heroMid: new THREE.Vector3(0, 1.05, 3.0),
       heroTarget: new THREE.Vector3(0, 0.3, RING),
       menuPos: new THREE.Vector3(0, 2.75, 5.5),
+      // each drink gets its own camera: high and calm, low beside the dallah, across the glass, down at table height
+      menuPoses: [
+        new THREE.Vector3(0, 2.75, 5.5),
+        new THREE.Vector3(0.9, 2.15, 5.3),
+        new THREE.Vector3(-1.1, 2.3, 5.1),
+        new THREE.Vector3(0.6, 1.6, 5.2),
+      ],
+      winCols: MOODS.map((m) => new THREE.Color(m[0])),
+      keyCols: MOODS.map((m) => new THREE.Color(m[2])),
+      // the beam of window light: from high behind-left down onto the patch on the tray
+      beamQuat: new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        WINDOW_LIGHT.clone().normalize(),
+      ),
       menuTarget: new THREE.Vector3(0, 0.25, 0.3),
       orbitCenter: new THREE.Vector3(),
       obj: new THREE.Object3D(),
@@ -598,13 +777,13 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
   const beanParams = useMemo(() => {
     const r = rng(9);
     return Array.from({ length: settings.beans }, (_, i) => ({
-      ring: 0.82 + r() * 0.35,
+      ring: 0.95 + r() * 0.4,
       phase: (i / settings.beans) * Math.PI * 2 + r() * 0.4,
       speed: (0.22 + r() * 0.18) * (r() < 0.25 ? -1 : 1),
       y: 0.22 + r() * 0.5,
       tilt: (r() - 0.5) * 0.5,
       spin: 0.6 + r() * 1.6,
-      scale: 0.85 + r() * 0.4,
+      scale: 0.75 + r() * 0.35,
       rx: r() * 6.28,
       rz: r() * 6.28,
     }));
@@ -675,6 +854,38 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     invalidate();
   }, [reduced, settings.beans, tmp, invalidate]);
 
+  // Beans, cardamom pods spilled on the table around the tray (static: placed once).
+  useEffect(() => {
+    const r = rng(17);
+    const o = tmp.obj;
+    const place = (mesh: THREE.InstancedMesh | null, count: number, clusters: [number, number, number][], lift: number) => {
+      if (!mesh) return;
+      for (let i = 0; i < count; i++) {
+        const c = clusters[i % clusters.length];
+        const a = r() * Math.PI * 2;
+        const d = Math.sqrt(r()) * c[2];
+        let x = c[0] + Math.cos(a) * d;
+        let z = c[1] + Math.sin(a) * d;
+        // keep clear of the tray (radius 2.04) and the dish
+        const rr = Math.hypot(x, z);
+        if (rr < 2.18) {
+          x *= 2.18 / rr;
+          z *= 2.18 / rr;
+        }
+        o.position.set(x, TABLE_Y + lift, z);
+        o.rotation.set(r() < 0.5 ? 0 : Math.PI, r() * 6.28, (r() - 0.5) * 0.2);
+        o.scale.setScalar(0.9 + r() * 0.25);
+        o.updateMatrix();
+        mesh.setMatrixAt(i, o.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+    };
+    place(scatterRef.current, settings.scatter, [[2.35, 1.45, 0.55], [0.4, -2.75, 0.6], [1.2, 2.55, 0.5], [2.7, -0.4, 0.5]], 0.05);
+    place(podsRef.current, Math.max(5, Math.round(settings.scatter / 3)), [[2.15, 2.25, 0.35], [1.6, 2.75, 0.4]], 0.042);
+    invalidate();
+  }, [settings.scatter, tmp, invalidate]);
+
   // Hook the DOM scroll controller up, then warm up shaders behind the loader before revealing.
   useEffect(() => {
     stage.invalidate = invalidate;
@@ -694,7 +905,13 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     // yield before compiling: mounting the scene and baking the environment were tasks of their own
     envDone.current
       .then(() => nextTask())
-      .then(() => (cancelled ? undefined : gl.compileAsync(scene, camera)))
+      .then(() => {
+        if (cancelled) return;
+        // the scene stays hidden until now, so no frame compiles a program before the environment map exists
+        // (that would compile every material twice, once without and once with the environment)
+        if (rootRef.current) rootRef.current.visible = true;
+        return gl.compileAsync(scene, camera);
+      })
       .then(reveal, reveal);
     return () => {
       cancelled = true;
@@ -748,10 +965,43 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     const intro = reduced ? 1 : a.readyAt < 0 ? 0 : easeOut((t - a.readyAt) / INTRO);
     const introMoving = !reduced && a.readyAt >= 0 && intro < 1;
     const lk = 0.15 + 0.85 * intro;
-    if (hemiRef.current) hemiRef.current.intensity = 0.7 * lk;
-    if (keyRef.current) keyRef.current.intensity = 2.3 * lk;
-    if (rimRef.current) rimRef.current.intensity = 1.8 * lk;
-    if (pointRef.current) pointRef.current.intensity = pointBase * lk;
+    // the chapter's mood: the hero, then whichever drink is at the front
+    const moodIdx = stage.heroProgress < 0.55 ? 0 : 1 + stage.active;
+    const mt = MOODS[moodIdx];
+    const mk = reduced ? 1 : 1 - Math.exp(-dt * 2.2);
+    let moodMoving = false;
+    const mv = a.mood;
+    for (let q = 0; q < 4; q++) {
+      const diff = (mt[MOOD_SLOTS[q]] as number) - mv[q];
+      if (Math.abs(diff) > 0.003) {
+        mv[q] += diff * mk;
+        moodMoving = true;
+      } else mv[q] = mt[MOOD_SLOTS[q]] as number;
+    }
+    if (hemiRef.current) hemiRef.current.intensity = mv[2] * lk;
+    const key = keyRef.current;
+    if (key) {
+      key.intensity = mv[1] * lk;
+      key.color.lerp(tmp.keyCols[moodIdx], mk);
+    }
+    const winL = rimRef.current;
+    if (winL) {
+      winL.intensity = mv[0] * lk;
+      winL.color.lerp(tmp.winCols[moodIdx], mk);
+      R.win.uWinColor.value.copy(winL.color);
+    }
+    R.win.uWinStrength.value = 6.5 * mv[3] * lk;
+    if (R.beam) {
+      R.beam.mat.color.copy(R.win.uWinColor.value);
+      R.beam.mat.opacity = 0.085 * mv[3] * intro;
+      const du = R.beam.dustMat.uniforms;
+      du.uColor.value.copy(R.win.uWinColor.value);
+      du.uOpacity.value = 0.7 * mv[3] * intro;
+      du.uTime.value = reduced ? 5.0 : t;
+      du.uViewportH.value = h * state.viewport.dpr;
+    }
+    if (backRef.current) backRef.current.intensity = 0.9 * lk;
+    if (pointRef.current) pointRef.current.intensity = pointBase * 0.6 * lk;
     if (settings.envSize && state.scene.environment) state.scene.environmentIntensity = 0.2 + 0.65 * intro;
 
     /* ---------- camera: hero close-up -> tray view, framed around the copy */
@@ -779,6 +1029,13 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     const far = aspect < 1 ? Math.pow(Math.min(2.1, 1 / aspect), 0.8) : 1;
     // the intro dollies the camera in by 6%
     const dolly = 1 + 0.06 * (1 - intro);
+    const wantMenu = tmp.menuPoses[stage.active];
+    let camMoving = false;
+    if (reduced) tmp.menuPos.copy(wantMenu);
+    else if (tmp.menuPos.distanceToSquared(wantMenu) > 1e-6) {
+      tmp.menuPos.lerp(wantMenu, 1 - Math.exp(-dt * 2.4));
+      camMoving = true;
+    } else tmp.menuPos.copy(wantMenu);
     tmp.camTarget.lerpVectors(tmp.heroTarget, tmp.menuTarget, k);
     tmp.camPos
       .lerpVectors(tmp.heroPos, tmp.menuPos, k)
@@ -787,6 +1044,7 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
       .add(tmp.camTarget);
     cam.position.copy(tmp.camPos);
     cam.lookAt(tmp.camTarget);
+    R.focus.value = cam.position.distanceTo(tmp.camTarget);
 
     /* ---------- tray: turn the active drink to the front */
     const target = (-stage.active * Math.PI) / 2;
@@ -1007,7 +1265,9 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
       (a.steam !== 0 && a.steam !== 1) ||
       introMoving ||
       sweep >= 0 ||
-      dallahMoving;
+      dallahMoving ||
+      moodMoving ||
+      camMoving;
     const autonomous = !reduced && a.readyAt >= 0; // steam + orbiting beans
     const artMoving = a.art > 0 && a.art < 1;
     if (stage.visible && !document.hidden && (autonomous || pouring || damping || rippling || artMoving)) {
@@ -1017,28 +1277,75 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
 
   const r = res;
   return (
-    <>
+    // hidden until the environment exists and the shaders are compiled (see the warm-up effect)
+    <group ref={rootRef} visible={false}>
       <hemisphereLight ref={hemiRef} args={["#ffe9c9", "#2a1b12", 0.7 * startLight]} />
-      <directionalLight ref={keyRef} position={KEY_LIGHT.toArray()} intensity={2.3 * startLight} color="#ffdcae" />
-      <directionalLight ref={rimRef} position={[3.5, 2.5, -4]} intensity={1.8 * startLight} color="#e3a53c" />
+      <directionalLight ref={keyRef} position={KEY_LIGHT.toArray()} intensity={MOODS[0][3] * startLight} color={MOODS[0][2]} />
+      {/* the lattice window: low sun from behind-left; rim light on every vessel and (high) real long shadows */}
+      <directionalLight
+        ref={rimRef}
+        position={WINDOW_LIGHT.toArray()}
+        intensity={MOODS[0][1] * startLight}
+        color={MOODS[0][0]}
+        castShadow={settings.shadows}
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-left={-3.2}
+        shadow-camera-right={3.2}
+        shadow-camera-top={3.2}
+        shadow-camera-bottom={-3.2}
+        shadow-camera-near={1}
+        shadow-camera-far={14}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.015}
+        shadow-radius={3}
+      />
+      <directionalLight ref={backRef} position={[3.5, 2.5, -4]} intensity={0.9 * startLight} color="#e3a53c" />
       <pointLight ref={pointRef} position={[2.5, 1.6, 3.5]} intensity={pointBase * startLight} distance={10} color="#f2e5cf" />
       {/* narrow sweep light (off until a drink settles at the front) */}
       <spotLight ref={spotRef} position={[-3.2, 2.2, 3.4]} angle={0.3} penumbra={0.85} intensity={0} distance={12} decay={2} color="#fff1dc" />
 
-      {/* warm pool of light under the tray, and the tray's soft contact shadow on it */}
-      <mesh geometry={r.plane} material={r.glowMat} position={[0, -0.25, 0]} scale={[10, 1, 10]} />
-      <mesh geometry={r.plane} material={r.trayShadowMat} position={[0, -0.24, 0]} scale={[5.5, 1, 5.5]} renderOrder={1} />
+      {/* the café table (fades into the page), a warm pool of light on it, and the tray's soft contact shadow */}
+      <mesh geometry={r.plane} material={r.tableMat} position={[0, TABLE_Y, 0]} scale={[16, 1, 16]} renderOrder={-2} receiveShadow />
+      <mesh geometry={r.plane} material={r.glowMat} position={[0, TABLE_Y + 0.001, 0]} scale={[8, 1, 8]} renderOrder={-1} />
+      <mesh geometry={r.plane} material={r.trayShadowMat} position={[0, TABLE_Y + 0.002, 0]} scale={[5.0, 1, 5.0]} renderOrder={-1} />
+
+      {/* things on the table: a glazed dish of dates, spilled beans and cardamom pods */}
+      <group position={[2.75, TABLE_Y, 0.55]}>
+        <mesh geometry={r.plane} material={r.shadowMat} position={[0.04, 0.002, 0.03]} scale={[1.0, 1, 1.0]} renderOrder={-1} />
+        <mesh geometry={r.dish} material={r.dishMat} castShadow receiveShadow />
+        {[
+          [0.08, 0.075, 0.05, 0.4, 0.15],
+          [-0.12, 0.07, -0.02, -0.7, -0.1],
+          [0.02, 0.07, -0.14, 1.6, 0.05],
+          [-0.03, 0.12, 0.02, 0.9, 0.35],
+        ].map(([x, y, z, ry, rz], k) => (
+          <mesh key={k} geometry={r.date} material={r.dateMat} position={[x, y, z]} rotation={[0, ry, rz]} castShadow />
+        ))}
+      </group>
+      <instancedMesh ref={scatterRef} args={[r.bean, r.beanMat, settings.scatter]} castShadow receiveShadow />
+      <instancedMesh ref={podsRef} args={[r.pod, r.podMat, Math.max(5, Math.round(settings.scatter / 3))]} castShadow />
+
+      {/* medium/high: the beam of window light through the air, with dust drifting in it */}
+      {r.beam && (
+        <>
+          <group position={[-2.3, 1.55, -1.85]} quaternion={tmp.beamQuat}>
+            <mesh geometry={r.plane} material={r.beam.mat} rotation={[Math.PI / 2, 0, 0]} scale={[1.7, 1, 4.4]} renderOrder={6} />
+            <mesh geometry={r.plane} material={r.beam.mat} rotation={[Math.PI / 2, 0, Math.PI / 2]} scale={[1.7, 1, 4.4]} renderOrder={6} />
+          </group>
+          <points ref={dustRef} geometry={r.beam.dustGeo} material={r.beam.dustMat} frustumCulled={false} renderOrder={6} />
+        </>
+      )}
 
       {/* high: brass rim glint. It sits in world space on the key-light side, so it stays put like a real
           highlight while the (round) tray turns underneath it */}
       {r.glow && <sprite material={r.glow.rim} position={[-1.2, 0.075, 1.61]} scale={0.5} renderOrder={5} />}
 
       <group ref={trayRef}>
-        <mesh geometry={r.trayBody} material={r.traySide} />
-        <mesh geometry={r.trayFloor} material={r.trayTopMat} />
-        <mesh geometry={r.rim} material={r.brassMat} position={[0, 0.035, 0]} rotation={[Math.PI / 2, 0, 0]} />
-        <mesh geometry={r.trayHandleGeo} material={r.brassMat} />
-        <mesh geometry={r.trayHandleGeo} material={r.brassMat} rotation={[0, Math.PI, 0]} />
+        <mesh geometry={r.trayBody} material={r.traySide} castShadow />
+        <mesh geometry={r.trayFloor} material={r.trayTopMat} receiveShadow />
+        <mesh geometry={r.rim} material={r.brassMat} position={[0, 0.035, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow />
+        <mesh geometry={r.trayHandleGeo} material={r.brassMat} castShadow />
+        <mesh geometry={r.trayHandleGeo} material={r.brassMat} rotation={[0, Math.PI, 0]} castShadow />
 
         {VESSELS.map((v, i) => {
           const ang = (i * Math.PI) / 2;
@@ -1054,7 +1361,7 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
                 position={[0.04, 0.003, -0.03]}
                 scale={[(v.saucer || v.shape.profile[1].x + 0.1) * 2.5, 1, (v.saucer || v.shape.profile[1].x + 0.1) * 2.5]}
               />
-              {saucerGeo && saucerMat && <mesh geometry={saucerGeo} material={saucerMat} />}
+              {saucerGeo && saucerMat && <mesh geometry={saucerGeo} material={saucerMat} castShadow receiveShadow />}
               <mesh
                 ref={(m) => {
                   surfaceRefs.current[i] = m;
@@ -1074,6 +1381,7 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
                     material={liquidMat}
                     position={[0, v.shape.fillBottom, 0]}
                     renderOrder={1}
+                    castShadow
                   />
                 )}
                 {i === 3 &&
@@ -1085,27 +1393,28 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
                   ].map(([x, y, z, ry], k) => (
                     <mesh key={k} geometry={r.ice} material={r.iceMat} position={[x, y, z]} rotation={[ry * 0.3, ry, ry * 0.2]} renderOrder={2} />
                   ))}
-                <mesh geometry={r.bodies[i]} material={r.bodyMats[i]} renderOrder={v.glass ? 3 : 0} />
-                {i === 0 && <mesh geometry={r.handle} material={r.handleMat} />}
+                <mesh geometry={r.bodies[i]} material={r.bodyMats[i]} renderOrder={v.glass ? 3 : 0} castShadow={!v.glass} />
+                {i === 0 && <mesh geometry={r.handle} material={r.handleMat} castShadow />}
               </group>
               {i === 1 && (
                 <>
-                  <mesh geometry={r.date} material={r.dateMat} position={[0.42, 0.085, 0.12]} rotation={[0, 0.5, 0]} scale={[0.04, 0.035, 0.08]} />
-                  <mesh geometry={r.date} material={r.dateMat} position={[0.36, 0.085, -0.24]} rotation={[0, -0.9, 0]} scale={[0.04, 0.035, 0.08]} />
+                  <mesh geometry={r.date} material={r.dateMat} position={[0.42, 0.085, 0.12]} rotation={[0, 0.5, 0]} scale={0.8} castShadow />
+                  <mesh geometry={r.date} material={r.dateMat} position={[0.36, 0.085, -0.24]} rotation={[0, -0.9, 0]} scale={0.8} castShadow />
+                  <mesh geometry={r.pod} material={r.podMat} position={[0.47, 0.072, -0.07]} rotation={[0, 1.2, 0]} castShadow />
                 </>
               )}
             </group>
           );
         })}
 
-        {reduced && <instancedMesh ref={beansRef} args={[r.bean, r.beanMat, settings.beans]} />}
+        {reduced && <instancedMesh ref={beansRef} args={[r.bean, r.beanMat, settings.beans]} castShadow />}
       </group>
 
       {/* the brass dallah: the tray's centrepiece, which lifts out to pour the qahwa (tilts around its body centre) */}
       <group ref={dallahRef} position={[0, DALLAH_PIVOT_Y, 0]} rotation={[0, settings.dallahMotion ? 0 : -Math.PI / 2, 0]}>
         <group position={[0, -DALLAH_PIVOT_Y, 0]}>
-          <mesh geometry={r.dallahBody} material={r.brassMat} />
-          <mesh geometry={r.dallahFit} material={r.brassMat} />
+          <mesh geometry={r.dallahBody} material={r.brassMat} castShadow />
+          <mesh geometry={r.dallahFit} material={r.brassMat} castShadow />
           {r.glow && (
             <sprite material={r.glow.spout} position={[DALLAH_TIP.x + 0.01, DALLAH_TIP.y, 0]} scale={0.16} renderOrder={5} />
           )}
@@ -1116,7 +1425,7 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
       <mesh ref={streamRef} geometry={r.stream} material={r.streamMat} visible={false} frustumCulled={false} />
       <points ref={steamRef} geometry={r.steamGeo} material={r.steamMat} frustumCulled={false} renderOrder={4} />
       {r.glow && <sprite ref={haloRef} material={r.glow.halo} scale={[0.9, 1.4, 1]} visible={false} renderOrder={3} />}
-      {!reduced && <instancedMesh ref={beansRef} args={[r.bean, r.beanMat, settings.beans]} frustumCulled={false} />}
-    </>
+      {!reduced && <instancedMesh ref={beansRef} args={[r.bean, r.beanMat, settings.beans]} frustumCulled={false} castShadow />}
+    </group>
   );
 }

@@ -533,3 +533,67 @@ export function beanGeometry() {
   g.computeVertexNormals();
   return g;
 }
+
+/** A green cardamom pod: a spindle with three soft ribs and pointed ends (long axis = z). */
+export function cardamomGeometry() {
+  const g = new THREE.SphereGeometry(1, 14, 10);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  for (let k = 0; k < pos.count; k++) {
+    v.fromBufferAttribute(pos, k);
+    const a = Math.atan2(v.y, v.x);
+    const rib = 1 + 0.12 * Math.cos(a * 3);
+    const r = Math.sqrt(v.x * v.x + v.y * v.y);
+    // pointed ends: the radius falls off faster than a sphere's toward the tips
+    const want = rib * Math.pow(Math.max(0, 1 - v.z * v.z), 0.8);
+    const s = r > 1e-5 ? want / r : 0;
+    v.set(v.x * s * 0.034, v.y * s * 0.034, v.z * 0.068);
+    pos.setXYZ(k, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A Medjool date: a slightly flattened, wrinkled long ellipsoid (long axis = z). */
+export function dateGeometry() {
+  const g = new THREE.SphereGeometry(1, 20, 14);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  for (let k = 0; k < pos.count; k++) {
+    v.fromBufferAttribute(pos, k);
+    const wr = 1 + 0.035 * Math.sin(v.z * 23 + Math.atan2(v.y, v.x) * 2) + 0.02 * Math.sin(v.z * 41 + v.x * 9);
+    v.set(v.x * 0.055 * wr, v.y * 0.046 * wr * (v.y < 0 ? 0.8 : 1), v.z * 0.1 * (1 - 0.06 * v.x));
+    pos.setXYZ(k, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A shallow round dish (for the dates on the table). */
+export function dishProfile(radius: number): THREE.Vector2[] {
+  const s = radius / 0.4;
+  const pts = [
+    ...emit([
+      [0, 0],
+      [0.2, 0, 1],
+    ]),
+    ...smooth(
+      [
+        [0.22, 0.01],
+        [0.33, 0.04],
+        [0.4, 0.075],
+      ],
+      8,
+    ),
+    ...smooth(
+      [
+        [0.385, 0.08],
+        [0.3, 0.052],
+        [0.18, 0.032],
+      ],
+      8,
+    ),
+    new THREE.Vector2(0, 0.03),
+  ];
+  return pts.map((p) => p.multiplyScalar(s));
+}

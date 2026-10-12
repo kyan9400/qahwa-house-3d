@@ -235,3 +235,162 @@ export function radialTexture(inner: string, outer: string, size = 128) {
   ctx.fillRect(0, 0, size, size);
   return toTexture(c);
 }
+
+/**
+  The café table under the tray: long dark walnut boards running left-right, each with its own tone, wavy grain,
+  a few knots and a dark seam between boards. Tiles in both directions. Returns colour + roughness maps.
+*/
+export function tableTexture(size: number) {
+  const { c, ctx } = canvas(size, size);
+  const r = rng(71);
+  const boards = 4;
+  const bh = size / boards;
+  for (let b = 0; b < boards; b++) {
+    const y0 = b * bh;
+    const tone = 0.75 + r() * 0.35;
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + bh);
+    const rgb = (k: number) => `rgb(${Math.round(42 * tone * k)},${Math.round(24 * tone * k)},${Math.round(14 * tone * k)})`;
+    g.addColorStop(0, rgb(0.92));
+    g.addColorStop(0.5, rgb(1.05));
+    g.addColorStop(1, rgb(0.88));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y0, size, bh);
+    const lines = Math.round(bh / 2.2);
+    for (let i = 0; i < lines; i++) {
+      const yy = y0 + (i / lines) * bh + r() * 2;
+      const amp = 1 + r() * 4;
+      const freq = (Math.PI * 2 * (1 + Math.floor(r() * 3))) / size; // whole periods: tiles in x
+      const phase = r() * 10;
+      ctx.beginPath();
+      for (let x = 0; x <= size; x += 6) {
+        const y = yy + Math.sin(x * freq + phase) * amp;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      const dark = r() < 0.22;
+      ctx.strokeStyle = dark ? `rgba(22,11,5,${0.25 + r() * 0.3})` : `rgba(${r() < 0.5 ? "140,92,56" : "30,16,8"},${0.06 + r() * 0.12})`;
+      ctx.lineWidth = dark ? 1 + r() * 1.5 : 0.5 + r();
+      ctx.stroke();
+    }
+    // a knot or two
+    for (let k = 0; k < 1 + Math.floor(r() * 2); k++) {
+      const kx = r() * size;
+      const ky = y0 + bh * (0.25 + r() * 0.5);
+      for (let ring = 6; ring > 0; ring--) {
+        ctx.strokeStyle = `rgba(25,12,6,${0.12 + ring * 0.03})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, ring * 3.2, ring * 1.4, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    // the seam between boards
+    ctx.fillStyle = "rgba(8,4,2,0.9)";
+    ctx.fillRect(0, y0, size, Math.max(1.5, size / 400));
+  }
+  const map = toTexture(c);
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+
+  const half = Math.max(64, size >> 1);
+  const rough = canvas(half, half);
+  rough.ctx.drawImage(c, 0, 0, half, half);
+  const img = rough.ctx.getImageData(0, 0, half, half);
+  const d = img.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const lum = (d[k] * 0.3 + d[k + 1] * 0.59 + d[k + 2] * 0.11) / 255;
+    const v = Math.round(255 * Math.min(0.85, Math.max(0.35, 0.95 - lum * 1.8)));
+    d[k] = d[k + 1] = d[k + 2] = v;
+  }
+  rough.ctx.putImageData(img, 0, 0);
+  const roughTex = toTexture(rough.c, false);
+  roughTex.wrapS = roughTex.wrapT = THREE.RepeatWrapping;
+  return { map, rough: roughTex };
+}
+
+/** Radial alpha falloff (linear data): the table fades into the page background instead of ending at an edge. */
+export function fadeTexture(size = 256) {
+  const { c, ctx } = canvas(size, size);
+  const h = size / 2;
+  const g = ctx.createRadialGradient(h, h, 0, h, h, h);
+  g.addColorStop(0, "#fff");
+  g.addColorStop(0.42, "#fff");
+  g.addColorStop(0.8, "#555");
+  g.addColorStop(1, "#000");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return toTexture(c, false);
+}
+
+/**
+  Light falling through an arched lattice window (a mashrabiya), as it lands on the table: four tall arched
+  panes split by mullions, with a fine lattice, all softened. Drawn white; tinted by the material colour.
+*/
+export function windowLightTexture(size: number) {
+  const { c, ctx } = canvas(size, size);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, size, size);
+  const blur = Math.max(2, Math.round(size / 90));
+  ctx.filter = `blur(${blur}px)`;
+  const panes = 3;
+  const margin = size * 0.1;
+  const gap = size * 0.045;
+  const pw = (size - margin * 2 - gap * (panes - 1)) / panes;
+  const top = size * 0.08;
+  const bottom = size * 0.94;
+  ctx.fillStyle = "#fff";
+  for (let p = 0; p < panes; p++) {
+    const x = margin + p * (pw + gap);
+    ctx.beginPath();
+    ctx.moveTo(x, bottom);
+    ctx.lineTo(x, top + pw / 2);
+    ctx.arc(x + pw / 2, top + pw / 2, pw / 2, Math.PI, 0);
+    ctx.lineTo(x + pw, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // lattice: knock a diagonal grid out of the panes
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.lineWidth = size / 160;
+  const step = size / 14;
+  for (let k = -size; k < size * 2; k += step) {
+    ctx.beginPath();
+    ctx.moveTo(k, 0);
+    ctx.lineTo(k + size, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(k, size);
+    ctx.lineTo(k + size, 0);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = "source-over";
+  ctx.filter = "none";
+  // the whole patch fades toward its far end, like light thrown at a low angle
+  const g = ctx.createLinearGradient(0, 0, 0, size);
+  g.addColorStop(0, "rgba(0,0,0,0.55)");
+  g.addColorStop(0.5, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.1)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return toTexture(c);
+}
+
+/** Soft vertical beam (for the shaft of window light): bright core, feathered sides and ends. */
+export function beamTexture() {
+  const { c, ctx } = canvas(64, 256);
+  const gx = ctx.createLinearGradient(0, 0, 64, 0);
+  gx.addColorStop(0, "rgba(255,255,255,0)");
+  gx.addColorStop(0.5, "rgba(255,255,255,1)");
+  gx.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gx;
+  ctx.fillRect(0, 0, 64, 256);
+  ctx.globalCompositeOperation = "destination-in";
+  const gy = ctx.createLinearGradient(0, 0, 0, 256);
+  gy.addColorStop(0, "rgba(0,0,0,0)");
+  gy.addColorStop(0.25, "rgba(0,0,0,0.9)");
+  gy.addColorStop(0.8, "rgba(0,0,0,0.6)");
+  gy.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = gy;
+  ctx.fillRect(0, 0, 64, 256);
+  return toTexture(c);
+}

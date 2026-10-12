@@ -146,7 +146,7 @@ void main() {
   p.z += cos(life * 3.2 + swirl * 0.8) * 0.12 * life;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  float worldSize = mix(0.05, 0.34, life) * (0.7 + aSeed.x * 0.6);
+  float worldSize = mix(0.06, 0.42, life) * (0.7 + aSeed.x * 0.6);
   gl_PointSize = worldSize * projectionMatrix[1][1] * uViewportH * 0.5 / -mv.z;
   vAlpha = smoothstep(0.0, 0.18, life) * (1.0 - smoothstep(0.45, 1.0, life));
 }
@@ -159,7 +159,46 @@ void main() {
   float d = length(gl_PointCoord - 0.5);
   float a = smoothstep(0.5, 0.0, d);
   a *= a;
-  gl_FragColor = vec4(vec3(0.98, 0.93, 0.85), a * vAlpha * uOpacity * 0.22);
+  gl_FragColor = vec4(vec3(1.0, 0.94, 0.84), a * vAlpha * uOpacity * 0.34);
+  #include <colorspace_fragment>
+}
+`;
+
+/**
+  Dust motes drifting in the shaft of window light. Each mote's position is a function of (seed, time):
+  a slow fall with a lazy sideways sway inside a box along the beam, twinkling as it turns. Additive.
+*/
+export const dustVertex = /* glsl */ `
+uniform float uTime;
+uniform vec3 uCenter;
+uniform vec3 uSize;
+uniform vec3 uSlant;
+uniform float uViewportH;
+attribute vec4 aSeed;
+varying float vAlpha;
+void main() {
+  float life = fract(aSeed.y - uTime * (0.012 + aSeed.x * 0.02));
+  vec3 p = vec3(aSeed.z - 0.5, life - 0.5, aSeed.w - 0.5) * uSize;
+  // the box leans with the beam
+  p += uSlant * (life - 0.5);
+  p.x += sin(uTime * 0.35 + aSeed.y * 40.0) * 0.08;
+  p.z += cos(uTime * 0.28 + aSeed.x * 30.0) * 0.08;
+  vec4 mv = modelViewMatrix * vec4(uCenter + p, 1.0);
+  gl_Position = projectionMatrix * mv;
+  gl_PointSize = (0.012 + aSeed.x * 0.016) * projectionMatrix[1][1] * uViewportH * 0.5 / -mv.z;
+  float tw = 0.55 + 0.45 * sin(uTime * (1.0 + aSeed.w * 2.0) + aSeed.z * 30.0);
+  vAlpha = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.85, 1.0, life)) * tw;
+}
+`;
+
+export const dustFragment = /* glsl */ `
+uniform vec3 uColor;
+uniform float uOpacity;
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  float a = smoothstep(0.5, 0.1, d);
+  gl_FragColor = vec4(uColor * a * vAlpha * uOpacity, 1.0);
   #include <colorspace_fragment>
 }
 `;

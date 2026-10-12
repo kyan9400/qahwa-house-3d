@@ -20,6 +20,9 @@ export interface TierSettings {
   transmission: boolean; // real refractive glass (one extra opaque pre-pass)
   dallahMotion: boolean; // the dallah lifts, tilts and pours (static on low)
   glow: boolean; // additive glow sprites (spout tip, brass rim, steam halo)
+  shadows: boolean; // one real shadow map from the window light
+  dust: number; // dust motes in the window beam (0 = no beam)
+  scatter: number; // beans resting on the table
 }
 
 export const TIERS: Record<Tier, TierSettings> = {
@@ -27,37 +30,46 @@ export const TIERS: Record<Tier, TierSettings> = {
     dprCap: 2,
     antialias: true,
     steam: 260,
-    beans: 42,
+    beans: 30,
     envSize: 256,
     segments: 96,
     profileDiv: 40,
     transmission: true,
     dallahMotion: true,
     glow: true,
+    shadows: true,
+    dust: 220,
+    scatter: 36,
   },
   medium: {
     dprCap: 1.5,
     antialias: true,
     steam: 150,
-    beans: 28,
+    beans: 22,
     envSize: 128,
     segments: 64,
     profileDiv: 32,
     transmission: false,
     dallahMotion: true,
     glow: false,
+    shadows: false,
+    dust: 110,
+    scatter: 24,
   },
   low: {
     dprCap: 1,
     antialias: false,
     steam: 60,
-    beans: 14,
+    beans: 12,
     envSize: 0,
     segments: 40,
     profileDiv: 24,
     transmission: false,
     dallahMotion: false,
     glow: false,
+    shadows: false,
+    dust: 0,
+    scatter: 12,
   },
 };
 

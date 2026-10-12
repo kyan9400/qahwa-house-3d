@@ -62,15 +62,30 @@ medium, software renderers → no 3D at all (poster), `?quality=` override that 
 | DPR cap | 2 | 1.5 | 1 |
 | MSAA | on | on | off |
 | Steam particles | 260 | 150 | 60 |
-| Beans | 42 | 28 | 14 |
+| Beans | 30 | 22 | 12 |
 | Baked environment map | 256 px | 128 px | off (lights only) |
 | Lathe segments | 96 | 64 | 40 |
 | Profile spline samples (`profileDiv`) | 40 | 32 | 24 |
 | Refractive glass (`transmission`) | on | off (thin transparent glass) | off |
 | Dallah lift, tilt and pour (`dallahMotion`) | on | on | off (static dallah turned to face the front cup; the arc pours from its spout) |
 | Additive glow sprites (`glow`) | on | off | off |
+| Window-light shadow map (`shadows`) | 1024 px | off | off |
+| Dust motes in the window beam (`dust`) | 220 | 110 | off (no beam) |
+| Beans spilled on the table (`scatter`) | 36 | 24 | 12 |
 
-Budget: under 120k triangles on high and 50k on low, fewer than 40 draw calls, no post-processing.
+**The setting and the light (visual redesign).** The tray no longer floats in a void: it stands on a dark walnut
+plank table (canvas-painted boards, seams and knots) that sinks into shadow toward the frame edges and fades into
+the page, with a depth-of-field look (the grain is sampled from blurrier mip levels the further it lies from the
+camera's focus distance). The main light is a low sun through a lattice (mashrabiya) window behind-left: its arched,
+latticed pattern is projected in world space onto the table and the tray floor, it rims every vessel, and on high it
+casts real long shadows (one 1024 px shadow map). Medium/high add a faint beam with GPU-animated dust motes. Spilled
+beans and cardamom pods and a green glazed dish of dates sit on the table; the cup glaze is a glossy clearcoat. Each
+chapter has its own lighting mood and camera, eased on scroll: golden late-afternoon hero, bright morning for the
+latte, deep saffron for the qahwa (lower camera beside the dallah), clean daylight for the pour-over, blue dusk with a
+warm lamp for the cold brew. Start-up: the scene stays hidden until the environment map is baked, so every shader
+compiles once (asynchronously) instead of twice; time to first 3D frame dropped noticeably on all tiers.
+
+Budget: under 120k triangles on high and 50k on low, about 40 draw calls (plus the shadow pass on high), no post-processing.
 
 A small custom adaptive-resolution controller (measures only consecutive drawn frames, so on-demand idle gaps are not
 mistaken for slow frames) lowers the DPR in steps when frame rate declines.

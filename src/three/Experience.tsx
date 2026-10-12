@@ -42,6 +42,7 @@ export default function Experience({ quality, onReady, onFail }: Props) {
   return (
     <Canvas
       frameloop="demand"
+      shadows={settings.shadows ? "percentage" : false}
       dpr={[1, settings.dprCap]}
       gl={{
         antialias: settings.antialias,
