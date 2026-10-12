@@ -4,11 +4,12 @@
   not comfort, so visitors can turn full motion back on. The choice is remembered in localStorage;
   ?motion=full / ?motion=reduced in the URL overrides it. An inline script in <head> applies the result to
   <html data-motion="full|reduced" data-motion-asked="1"> before first paint (see MOTION_BOOT_SCRIPT).
+  It also adds the "js" class, so the heading reveals only hide words when script is actually running.
 */
 
 export const MOTION_KEY = "qahwa-motion";
 
-export const MOTION_BOOT_SCRIPT = `(function(){try{var d=document.documentElement,c=null,s=false;
+export const MOTION_BOOT_SCRIPT = `(function(){try{var d=document.documentElement,c=null,s=false;d.classList.add('js');
 try{s=window.matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}
 var u=new URLSearchParams(location.search).get('motion');
 if(u==='full'||u==='reduced'){c=u}else{try{c=localStorage.getItem('${MOTION_KEY}')}catch(e){}}

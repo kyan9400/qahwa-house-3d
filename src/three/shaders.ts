@@ -2,13 +2,20 @@
 
 export const surfaceVertex = /* glsl */ `
 varying vec2 vUv;
+varying vec3 vWorldPos;
 void main() {
   vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWorldPos = world.xyz;
+  gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
 
-/** Liquid surface: colour or crema texture, ripple rings while pouring, a dark meniscus and a soft highlight. */
+/**
+  Liquid surface: colour or crema texture, ripple rings while pouring, a dark meniscus and a soft highlight,
+  plus a view-dependent fresnel reflection of the warm room and a sharp key-light glint, so the coffee reads
+  as wet liquid from the low hero camera. The surface is flat, so its world normal is straight up.
+*/
 export const surfaceFragment = /* glsl */ `
 uniform vec3 uColor;
 uniform sampler2D uMap;
@@ -17,7 +24,10 @@ uniform float uArt;
 uniform float uRipple;
 uniform float uTime;
 uniform float uOpacity;
+uniform vec3 uLightDir;
+uniform vec3 uEnvColor;
 varying vec2 vUv;
+varying vec3 vWorldPos;
 void main() {
   vec2 p = vUv * 2.0 - 1.0;
   float r = length(p);
@@ -31,26 +41,63 @@ void main() {
   base *= mix(1.0, 0.62, smoothstep(0.8, 1.0, r));
   float spec = pow(max(0.0, 1.0 - length(p - vec2(-0.32, 0.38)) * 1.5), 5.0);
   base += vec3(1.0, 0.86, 0.66) * spec * 0.22 * (1.0 - uArt * 0.5);
+
+  // wet look: fresnel reflection + key-light glint (the ripple tilts the normal a little)
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  vec3 N = normalize(vec3(p.x * wave * 0.5, 1.0, p.y * wave * 0.5));
+  float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0);
+  base = mix(base, uEnvColor, fres * 0.35);
+  vec3 H = normalize(uLightDir + V);
+  float glint = pow(max(dot(N, H), 0.0), 220.0);
+  base += vec3(1.0, 0.9, 0.74) * glint * 0.8 * (1.0 - uArt * 0.6) * (1.0 - smoothstep(0.85, 1.0, r));
   gl_FragColor = vec4(base, uOpacity);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
 `;
 
-/** The pour: a thin cylinder with flow bands travelling down it and a bright fresnel edge. */
+/**
+  The pour: a thin cylinder with flow bands travelling down it and a bright fresnel edge.
+  uBend = 0: a straight vertical stream placed by the model matrix.
+  uBend = 1: the GPU bends the same cylinder along a parabola from uFrom (the dallah spout) to uTo (the cup),
+  like liquid thrown from a spout; uRange picks the visible part (0..1 along the arc). No per-frame geometry.
+*/
 export const streamVertex = /* glsl */ `
 uniform float uTime;
+uniform float uBend;
+uniform vec3 uFrom;
+uniform vec3 uTo;
+uniform vec2 uRange;
+uniform float uRadius;
 varying vec3 vN;
 varying vec3 vView;
 varying float vWorldY;
 void main() {
   vec3 p = position;
-  vec4 world = modelMatrix * vec4(p, 1.0);
+  vec4 world;
+  vec3 n;
+  if (uBend > 0.5) {
+    float s = mix(uRange.x, uRange.y, clamp(-p.y, 0.0, 1.0));
+    vec3 d = uTo - uFrom;
+    // horizontal speed is constant, the fall accelerates: y follows s^2
+    vec3 c = vec3(uFrom.x + d.x * s, uFrom.y + d.y * s * s, uFrom.z + d.z * s);
+    vec3 tng = normalize(vec3(d.x, 2.0 * d.y * s - 1e-4, d.z));
+    // the arc lies in one vertical plane: its horizontal normal is a stable side axis for any pour direction
+    vec2 hz = d.xz;
+    vec3 side = dot(hz, hz) > 1e-8 ? normalize(vec3(-hz.y, 0.0, hz.x)) : vec3(1.0, 0.0, 0.0);
+    vec3 up2 = cross(side, tng);
+    vec3 off = side * p.x + up2 * p.z;
+    world = vec4(c + off * uRadius, 1.0);
+    n = normalize(off);
+  } else {
+    world = modelMatrix * vec4(p, 1.0);
+    n = mat3(modelMatrix) * normal;
+  }
   float wob = sin(world.y * 14.0 + uTime * 11.0) * 0.004 + sin(world.y * 31.0 - uTime * 7.0) * 0.002;
   world.x += wob;
   vWorldY = world.y;
   vec4 mv = viewMatrix * world;
-  vN = normalize(mat3(viewMatrix) * mat3(modelMatrix) * normal);
+  vN = normalize(mat3(viewMatrix) * n);
   vView = normalize(-mv.xyz);
   gl_Position = projectionMatrix * mv;
 }

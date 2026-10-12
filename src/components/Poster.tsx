@@ -21,6 +21,16 @@ export default function Poster() {
           <stop offset="0.8" stopColor="#9a5d31" />
           <stop offset="1" stopColor="#5e3118" />
         </radialGradient>
+        <linearGradient id="pg-brass" x1="0" x2="1">
+          <stop offset="0" stopColor="#6b4a1c" />
+          <stop offset="0.38" stopColor="#e8c27a" />
+          <stop offset="0.62" stopColor="#b8873a" />
+          <stop offset="1" stopColor="#5e4018" />
+        </linearGradient>
+        <linearGradient id="pg-brass-spout" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stopColor="#9c7130" />
+          <stop offset="1" stopColor="#e3b768" />
+        </linearGradient>
         <linearGradient id="pg-saucer" x1="0" x2="1">
           <stop offset="0" stopColor="#cdbd9f" />
           <stop offset="0.45" stopColor="#f2e7d4" />
@@ -28,6 +38,18 @@ export default function Poster() {
         </linearGradient>
       </defs>
       <circle cx="320" cy="350" r="300" fill="url(#pg-glow)" />
+      {/* the brass dallah behind the cup, as in the 3D scene */}
+      <g transform="translate(168 444)">
+        <path
+          d="M-50 -70C-85 -70 -100 -100 -110 -140C-118 -175 -130 -196 -150 -203L-152 -198C-138 -190 -126 -170 -118 -138C-108 -96 -96 -54 -52 -44Z"
+          fill="url(#pg-brass-spout)"
+        />
+        <path d="M28 -160C70 -168 100 -150 98 -110C96 -78 82 -54 62 -44" fill="none" stroke="#9c7130" strokeWidth="9" strokeLinecap="round" />
+        <path
+          d="M0 0L58 0C64 -3 72 -20 73.5 -39C75 -55 66 -75 55.5 -87C45 -99 32 -116 30.6 -132C29.5 -144 34 -160 40.5 -168C45 -174 50 -178 51.6 -180L46.8 -181C44 -186 36 -198 19.5 -207.6L9.6 -210L9.6 -215.4L15.6 -216.6L15.6 -221.4L7.2 -223.2C14 -230 16 -240 13.2 -246C10 -253 4 -257 0 -257.4C-4 -257 -10 -253 -13.2 -246C-16 -240 -14 -230 -7.2 -223.2L-15.6 -221.4L-15.6 -216.6L-9.6 -215.4L-9.6 -210L-19.5 -207.6C-36 -198 -44 -186 -46.8 -181L-51.6 -180C-50 -178 -45 -174 -40.5 -168C-34 -160 -29.5 -144 -30.6 -132C-32 -116 -45 -99 -55.5 -87C-66 -75 -75 -55 -73.5 -39C-72 -20 -64 -3 -58 0Z"
+          fill="url(#pg-brass)"
+        />
+      </g>
       <g fill="none" stroke="#f2e5cf" strokeLinecap="round" opacity="0.32">
         <path d="M285 200c-30-40 30-60 0-105s25-60 5-90" strokeWidth="12" />
         <path d="M340 205c-25-35 35-55 10-100s20-55 0-80" strokeWidth="9" />

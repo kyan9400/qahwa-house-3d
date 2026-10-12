@@ -21,13 +21,23 @@ export default function Stage({ children }: { children: React.ReactNode }) {
   const [quality, setQuality] = useState<QualityResult | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [glyph, setGlyph] = useState(false);
 
   const onReady = useCallback(() => setReady(true), []);
   const onFail = useCallback(() => setFailed(true), []);
 
   // Only after the page has loaded and the main thread is idle: probe the GPU (tiny throwaway context, no three.js),
   // then mount (= download) the 3D chunk unless this is a software renderer.
-  useEffect(() => afterLoadIdle(() => setQuality(detectQuality())), []);
+  // The outline glyph fades in at the same moment: by then its (not preloaded) Arabic font has loaded, so the
+  // font swap happens while it is still hidden and can never register as a layout shift.
+  useEffect(
+    () =>
+      afterLoadIdle(() => {
+        setGlyph(true);
+        setQuality(detectQuality());
+      }),
+    [],
+  );
 
   // Scroll -> stage store. One passive listener, at most one layout read per animation frame.
   useEffect(() => {
@@ -82,6 +92,10 @@ export default function Stage({ children }: { children: React.ReactNode }) {
   return (
     <div ref={wrapRef} className="relative">
       <div className="stage-layer pointer-events-none" aria-hidden="true">
+        {/* oversized outline lettering behind the cup: gives the right half depth before the 3D arrives */}
+        <span lang="ar" className="stage-glyph" data-on={glyph}>
+          قهوة
+        </span>
         <div className="stage-poster" data-hidden={ready && !failed}>
           <Poster />
         </div>
@@ -91,9 +105,12 @@ export default function Stage({ children }: { children: React.ReactNode }) {
           </div>
         )}
         {showCanvas && !ready && (
-          <div className="absolute right-4 top-20 flex items-center gap-2 text-sm text-sand sm:right-8">
-            <span className="loader-dot inline-block h-2 w-2 rounded-full bg-saffron" />
+          <div className="stage-loader absolute right-4 top-20 text-sm text-sand sm:right-8">
             Warming the cups
+            {/* a thin saffron line fills while the shaders compile */}
+            <span className="stage-loader-track">
+              <span className="stage-loader-fill" />
+            </span>
           </div>
         )}
       </div>

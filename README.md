@@ -56,6 +56,7 @@ npm install
 npm run dev     # http://localhost:3000
 npm run build   # production build
 npm run lint
+npm run build:pages   # static GitHub Pages mirror in out/ (basePath /qahwa-house-3d)
 ```
 
 ## Credits

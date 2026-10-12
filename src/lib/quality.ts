@@ -16,12 +16,49 @@ export interface TierSettings {
   beans: number;
   envSize: number; // 0 = no environment map
   segments: number; // lathe radial segments
+  profileDiv: number; // spline samples per vessel wall (smoothness of the profile)
+  transmission: boolean; // real refractive glass (one extra opaque pre-pass)
+  dallahMotion: boolean; // the dallah lifts, tilts and pours (static on low)
+  glow: boolean; // additive glow sprites (spout tip, brass rim, steam halo)
 }
 
 export const TIERS: Record<Tier, TierSettings> = {
-  high: { dprCap: 2, antialias: true, steam: 260, beans: 42, envSize: 256, segments: 96 },
-  medium: { dprCap: 1.5, antialias: true, steam: 150, beans: 28, envSize: 128, segments: 64 },
-  low: { dprCap: 1, antialias: false, steam: 60, beans: 14, envSize: 0, segments: 40 },
+  high: {
+    dprCap: 2,
+    antialias: true,
+    steam: 260,
+    beans: 42,
+    envSize: 256,
+    segments: 96,
+    profileDiv: 40,
+    transmission: true,
+    dallahMotion: true,
+    glow: true,
+  },
+  medium: {
+    dprCap: 1.5,
+    antialias: true,
+    steam: 150,
+    beans: 28,
+    envSize: 128,
+    segments: 64,
+    profileDiv: 32,
+    transmission: false,
+    dallahMotion: true,
+    glow: false,
+  },
+  low: {
+    dprCap: 1,
+    antialias: false,
+    steam: 60,
+    beans: 14,
+    envSize: 0,
+    segments: 40,
+    profileDiv: 24,
+    transmission: false,
+    dallahMotion: false,
+    glow: false,
+  },
 };
 
 export interface QualityResult {

@@ -27,7 +27,8 @@ function rng(seed: number) {
   };
 }
 
-/** Walnut tray top: plank grain with gentle waves and a few darker figure lines. */
+/** Walnut tray top: plank grain with gentle waves and a few darker figure lines.
+    Returns the colour map and a matching roughness map (the darker grain lines are a little rougher). */
 export function woodTexture(size: number) {
   const { c, ctx } = canvas(size, size);
   const r = rng(7);
@@ -60,7 +61,83 @@ export function woodTexture(size: number) {
   hl.addColorStop(1, "rgba(255,220,170,0)");
   ctx.fillStyle = hl;
   ctx.fillRect(0, 0, size, size);
-  return toTexture(c);
+  const map = toTexture(c);
+
+  // roughness pass: drawn from the colour canvas at half size, luminance -> roughness (0.32 .. 0.7)
+  const half = Math.max(64, size >> 1);
+  const rough = canvas(half, half);
+  rough.ctx.drawImage(c, 0, 0, half, half);
+  const img = rough.ctx.getImageData(0, 0, half, half);
+  const d = img.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const lum = (d[k] * 0.3 + d[k + 1] * 0.59 + d[k + 2] * 0.11) / 255;
+    const v = Math.round(255 * Math.min(0.7, Math.max(0.32, 0.78 - lum * 1.4)));
+    d[k] = d[k + 1] = d[k + 2] = v;
+  }
+  rough.ctx.putImageData(img, 0, 0);
+  return { map, rough: toTexture(rough.c, false) };
+}
+
+/** Grey roughness value with fine noise and wrapped speckles; tiles in both directions. Also used as a bump map. */
+function paintSpeckle(ctx: CanvasRenderingContext2D, w: number, h: number, base: number, seed: number) {
+  const r = rng(seed);
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const v = Math.round(255 * Math.min(1, Math.max(0, base + (r() - 0.5) * 0.06)));
+    d[k] = d[k + 1] = d[k + 2] = v;
+    d[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  // iron speckles in the glaze, drawn with wrapped copies so the texture tiles seamlessly
+  const dots = Math.round((w * h) / 260);
+  for (let i = 0; i < dots; i++) {
+    const x = r() * w;
+    const y = r() * h;
+    const rad = 0.5 + r() * 1.3;
+    const shade = r() < 0.7 ? base + 0.18 : base - 0.12;
+    ctx.fillStyle = `rgba(${Math.round(255 * shade)},${Math.round(255 * shade)},${Math.round(255 * shade)},0.8)`;
+    for (const ox of [0, x < 3 ? w : x > w - 3 ? -w : 0]) {
+      for (const oy of [0, y < 3 ? h : y > h - 3 ? -h : 0]) {
+        ctx.beginPath();
+        ctx.arc(x + ox, y + oy, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+/** Stoneware speckle + micro-noise (tiling, linear data): roughness = material.roughness * value (avg `base`). */
+export function speckleTexture(size: number, base = 0.5) {
+  const { c, ctx } = canvas(size, size);
+  paintSpeckle(ctx, size, size, base, 23);
+  const t = toTexture(c, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/**
+  Roughness/bump map for the latte cup body, laid out along the lathe's v like the colour strip:
+  speckled glaze at `glaze` roughness, and the unglazed foot (v < footV) at 0.9.
+*/
+export function glazeRoughTexture(footV: number, glaze = 0.38) {
+  const w = 256;
+  const h = 512;
+  const { c, ctx } = canvas(w, h);
+  paintSpeckle(ctx, w, h, glaze, 31);
+  // canvas y = 0 is v = 1 (flipY): the foot band is at the bottom of the canvas
+  const band = Math.min(h - 1, Math.max(0, Math.round((1 - footV) * h)));
+  const r = rng(37);
+  const img = ctx.getImageData(0, band, w, h - band);
+  const d = img.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const v = Math.round(255 * (0.9 + (r() - 0.5) * 0.08));
+    d[k] = d[k + 1] = d[k + 2] = v;
+  }
+  ctx.putImageData(img, 0, band);
+  const t = toTexture(c, false);
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
 }
 
 /** Crema with a rosetta of steamed milk, as seen from above. */

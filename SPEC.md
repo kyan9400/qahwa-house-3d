@@ -42,6 +42,15 @@ One `<Canvas>` lives in a sticky, full-viewport layer behind sections 1–2.
 - **Camera:** scroll progress through the hero moves the camera from a close, low hero shot to a three-quarter view of the
   tray. Scroll progress through the menu sets the tray's target angle; one damping step in `useFrame` eases toward it
   (native scroll, no Lenis, so a single smoothing layer).
+- **Dallah (the signature moment):** a brass lathe dallah (crescent waist, flared rim, domed lid, stepped finial) with a
+  tapered tube spout and handle stands at the tray centre. When the qahwa reaches the front it lifts, glides over and tilts
+  38°, and the pour follows a parabola from the spout to the finjan (bent on the GPU from `uFrom`/`uTo`). It nods once as the
+  lights come on. Reduced motion: it stays put and the finjan is shown full.
+- **Intro and light sweep:** on reveal the lights ramp from 15% to 100% and the environment from 0.2 to 0.85 over 1.4 s while
+  the camera dollies in 6%. Each time a drink settles at the front, a narrow spot light sweeps across it (0.9 s).
+- **Materials:** speckled stoneware glaze (painted roughness + bump map) with an unglazed foot, clearcoated walnut floor
+  with a grain roughness map, brushed (anisotropic) brass rim, handles and dallah, refractive glass on high, and a liquid
+  surface shader with fresnel reflection and a key-light glint.
 - Lighting: hemisphere + key + rim lights, plus an environment map baked once with `PMREMGenerator` from code-made light panels (no
   HDRI downloads, no drei) for glaze reflections on medium/high. Blob shadows are canvas-generated radial textures.
 
@@ -56,6 +65,12 @@ medium, software renderers → no 3D at all (poster), `?quality=` override that 
 | Beans | 42 | 28 | 14 |
 | Baked environment map | 256 px | 128 px | off (lights only) |
 | Lathe segments | 96 | 64 | 40 |
+| Profile spline samples (`profileDiv`) | 40 | 32 | 24 |
+| Refractive glass (`transmission`) | on | off (thin transparent glass) | off |
+| Dallah lift, tilt and pour (`dallahMotion`) | on | on | off (static dallah turned to face the front cup; the arc pours from its spout) |
+| Additive glow sprites (`glow`) | on | off | off |
+
+Budget: under 120k triangles on high and 50k on low, fewer than 40 draw calls, no post-processing.
 
 A small custom adaptive-resolution controller (measures only consecutive drawn frames, so on-demand idle gaps are not
 mistaken for slow frames) lowers the DPR in steps when frame rate declines.

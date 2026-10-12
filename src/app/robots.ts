@@ -1,10 +1,12 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
-const siteUrl = "https://qahwa-house-3d.vercel.app";
+// static so it also works in the GitHub Pages export
+export const dynamic = "force-static";
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: { userAgent: "*", allow: "/" },
-    sitemap: `${siteUrl}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

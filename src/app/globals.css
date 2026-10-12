@@ -24,7 +24,7 @@
 
 :root {
   color-scheme: dark;
-  --section-y: clamp(64px, 10vw, 96px);
+  --section-y: clamp(80px, 12vw, 144px);
 }
 
 html {
@@ -60,6 +60,9 @@ body {
 .on-light :focus-visible {
   outline-color: var(--color-ember);
 }
+.on-saffron :focus-visible {
+  outline-color: var(--color-espresso);
+}
 
 .skip-link {
   position: fixed;
@@ -82,10 +85,44 @@ body {
 .display-xl {
   font-family: var(--font-display);
   font-weight: 380;
-  font-size: clamp(2.6rem, 7.2vw, 5.4rem);
-  line-height: 0.98;
-  letter-spacing: -0.02em;
-  font-variation-settings: "SOFT" 80, "opsz" 144;
+  font-size: clamp(2.9rem, 8.4vw, 6.6rem);
+  line-height: 0.94;
+  letter-spacing: -0.03em;
+  font-variation-settings: "opsz" 144;
+}
+/* the real italic face (not a faux-oblique) */
+.font-display-italic {
+  font-family: var(--font-fraunces-italic), var(--font-display);
+  font-style: italic;
+}
+
+/* hero headline: two lines, the italic one stepped in for an asymmetric, editorial stagger */
+.hero-title {
+  max-width: 9.4em;
+}
+@media (min-width: 900px) {
+  .hero-stagger {
+    padding-left: 0.6em;
+  }
+}
+
+/* thin vertical meta rail at the far left (decorative) */
+.meta-rail {
+  display: none;
+}
+@media (min-width: 1200px) {
+  .meta-rail.eyebrow {
+    display: block;
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%) rotate(180deg);
+    writing-mode: vertical-rl;
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
 }
 .display-lg {
   font-family: var(--font-display);
@@ -93,14 +130,14 @@ body {
   font-size: clamp(2.1rem, 5vw, 3.6rem);
   line-height: 1.04;
   letter-spacing: -0.015em;
-  font-variation-settings: "SOFT" 60, "opsz" 120;
+  font-variation-settings: "opsz" 120;
 }
 .display-md {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: clamp(1.45rem, 2.6vw, 1.85rem);
   line-height: 1.15;
-  font-variation-settings: "SOFT" 40, "opsz" 48;
+  font-variation-settings: "opsz" 48;
 }
 .eyebrow {
   font-size: 0.8125rem;
@@ -122,6 +159,7 @@ body {
   font-size: 0.975rem;
   transition:
     transform 0.2s ease,
+    translate 0.25s ease-out,
     background-color 0.2s ease,
     color 0.2s ease;
 }
@@ -200,18 +238,65 @@ body {
   }
 }
 
-.loader-dot {
-  animation: pulse 1.4s ease-in-out infinite;
+/* oversized outline lettering behind the canvas (inside the sticky layer, never in the hero copy column) */
+.stage-glyph {
+  position: absolute;
+  right: 4%;
+  top: 50%;
+  transform: translateY(-58%);
+  font-family: var(--font-arabic);
+  font-size: 20vw;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(227, 165, 60, 0.35);
+  white-space: nowrap;
+  user-select: none;
 }
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.85);
+/* with script, it stays hidden until after load (see Stage): the late font swap never counts as a layout shift */
+html.js .stage-glyph {
+  visibility: hidden;
+  opacity: 0;
+}
+html.js .stage-glyph[data-on="true"] {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 1.4s ease;
+}
+@media (max-width: 899px), (max-aspect-ratio: 1/1) {
+  .stage-glyph {
+    right: 50%;
+    top: 30%;
+    transform: translate(50%, -50%);
+    font-size: 44vw;
+    -webkit-text-stroke-color: rgba(227, 165, 60, 0.22);
   }
-  50% {
-    opacity: 1;
-    transform: scale(1);
+}
+
+/* stage loader: a thin saffron line that fills (scaleX) while the shaders compile */
+.stage-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.stage-loader-track {
+  display: block;
+  width: 120px;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(227, 165, 60, 0.18);
+}
+.stage-loader-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-saffron);
+  transform-origin: left;
+  transform: scaleX(0.08);
+  animation: fill 5s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+@keyframes fill {
+  to {
+    transform: scaleX(0.92);
   }
 }
 
@@ -244,17 +329,160 @@ body {
   }
 }
 
-/* menu rows: the active drink is highlighted */
-.menu-item {
-  transition: opacity 0.4s ease;
+/* menu rows: the active drink is highlighted. Only the decorative parts fade (numeral, rule, notes chips);
+   the name and body text stay at full opacity so they keep AA contrast over the live canvas. */
+.menu-deco,
+.menu-body {
+  transition:
+    opacity 0.4s ease,
+    color 0.4s ease;
 }
 @media (min-width: 900px) and (min-aspect-ratio: 21/20) {
-  .menu-item {
-    opacity: 0.7;
+  .menu-item .menu-deco {
+    opacity: 0.6;
   }
-  .menu-item[data-active="true"] {
+  .menu-item .menu-body {
+    color: #a8957a; /* >= 4.5:1 on espresso */
+  }
+  .menu-item[data-active="true"] .menu-deco {
     opacity: 1;
   }
+  .menu-item[data-active="true"] .menu-body {
+    color: var(--color-sand);
+  }
+}
+
+/* split-word reveal for h2s (words are wrapped on the server by splitWords). Visible by default:
+   words are only pushed down when script runs (html.js) with full motion. Transform only. */
+.w {
+  display: inline-block;
+  overflow: clip;
+  vertical-align: top;
+  padding-bottom: 0.12em;
+  margin-bottom: -0.12em;
+}
+.w > span {
+  display: inline-block;
+}
+html.js[data-motion="full"] [data-reveal] .w > span {
+  transform: translateY(105%);
+  transition: transform 0.85s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i) * 40ms);
+}
+html.js[data-motion="full"] [data-reveal][data-in="true"] .w > span {
+  transform: none;
+}
+
+/* numbered hairline section header */
+.hairline {
+  display: block;
+  flex: 1;
+  height: 1px;
+  background: var(--color-walnut);
+}
+.hairline-light {
+  background: #dccab0;
+}
+
+/* reading progress: 2 px saffron bar under the header */
+.progress-track {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 64px;
+  z-index: 41;
+  height: 2px;
+  pointer-events: none;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--color-saffron);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+/* section dots (wide screens, after the 3D stage): real links with a 44 px hit area */
+.section-dots {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .section-dots {
+    display: block;
+    position: fixed;
+    right: 10px;
+    top: 50%;
+    z-index: 30;
+    transform: translateY(-50%);
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity 0.3s ease,
+      visibility 0s linear 0.3s;
+  }
+  .section-dots[data-show="true"] {
+    visibility: visible;
+    opacity: 1;
+    transition:
+      opacity 0.3s ease,
+      visibility 0s;
+  }
+}
+.section-dots a {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+}
+.section-dots a span {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-sand);
+  background: var(--color-espresso);
+  transition: transform 0.25s ease;
+}
+/* the dots float over dark and light sections: a dark disc behind the focus ring keeps it visible on both */
+.section-dots a:focus-visible {
+  outline-offset: -4px;
+  background: rgba(26, 17, 11, 0.88);
+}
+.section-dots a:hover span {
+  transform: scale(1.3);
+}
+.section-dots a[aria-current] span {
+  background: var(--color-saffron);
+  border-color: var(--color-saffron);
+  transform: scale(1.35);
+}
+
+/* desktop follower ring (the native cursor stays visible) */
+.cursor-ring {
+  position: fixed;
+  left: -5px;
+  top: -5px;
+  z-index: 90;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.cursor-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-crema);
+  mix-blend-mode: difference;
+  transition: transform 0.25s ease;
+}
+.cursor-ring[data-on="true"] {
+  opacity: 0.85;
+}
+.cursor-ring[data-hover="true"]::after {
+  transform: scale(3.2);
 }
 
 /* hero entrance (opacity/transform only) for the small eyebrow and the buttons. Never on the headline or the
@@ -287,13 +515,20 @@ body {
 
 html[data-motion="reduced"] .rise,
 html[data-motion="reduced"] .scroll-cue,
-html[data-motion="reduced"] .loader-dot {
+html[data-motion="reduced"] .stage-loader-fill {
   animation: none;
 }
+html[data-motion="reduced"] .stage-loader-fill {
+  transform: scaleX(0.5);
+}
 html[data-motion="reduced"] .btn,
+html.js[data-motion="reduced"] .stage-glyph[data-on],
 html[data-motion="reduced"] .stage-canvas,
 html[data-motion="reduced"] .stage-poster,
-html[data-motion="reduced"] .menu-item {
+html[data-motion="reduced"] .menu-deco,
+html[data-motion="reduced"] .menu-body,
+html[data-motion="reduced"] .section-dots,
+html[data-motion="reduced"] .section-dots a span {
   transition: none;
 }
 
