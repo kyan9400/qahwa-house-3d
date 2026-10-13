@@ -94,8 +94,15 @@ mistaken for slow frames) lowers the DPR in steps when frame rate declines.
 is running (steam/beans in full motion, a pour, or the tray still damping) AND the stage is on screen AND the tab is
 visible. Otherwise nothing renders.
 
-**Warm-up:** the stage shows the SVG poster with a quiet loader until `gl.compileAsync(scene, camera)` resolves and the
-first frame is drawn; then the canvas fades in (opacity only).
+**Warm-up:** the stage shows the SVG poster with a quiet loader until every shader program has compiled and the
+first frame is drawn; then the canvas fades in (opacity only). Order: WebGL context first, then the PMREM filter shaders
+(the GGX one alone is ~1.4 s on ANGLE/D3D11) are linked against a placeholder target of the final size and compile in
+parallel (`KHR_parallel_shader_compile`) while the textures are painted; then all scene programs are linked at once,
+including, on high, the refractive glass's pre-pass variants (no tone mapping, glass back faces), which three would
+otherwise compile synchronously on the first frame. The environment is baked as soon as its filters are ready; the scene
+is revealed when all programs report completion, so no frame ever stalls on a compile. Production also skips
+three's per-program info-log reads (`checkShaderErrors`). Measured load → 3D visible (Chrome, ANGLE/D3D11, production
+build): high ≈ 12–13 s → ≈ 4.4–4.6 s, medium ≈ 6.4–7 s → ≈ 3.7–4.2 s, low ≈ 2.7–3 s.
 
 **Reduced motion** (default when the OS asks; "Turn on full motion" toggle, remembered in localStorage, `?motion=full`
 override): no orbiting beans (resting on the tray), steam frozen as a still wisp, no pour animation (vessels shown full),

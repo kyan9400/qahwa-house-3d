@@ -275,7 +275,8 @@ export async function createResources(settings: TierSettings) {
           side: THREE.DoubleSide,
           transparent: false,
         })
-      : new THREE.MeshPhysicalMaterial({
+      : // (standard, not physical: with the default ior and specular it reflects the same, in a lighter program)
+        new THREE.MeshStandardMaterial({
           color: "#fff8ee",
           roughness: 0.06,
           metalness: 0,
@@ -284,7 +285,6 @@ export async function createResources(settings: TierSettings) {
           side: THREE.DoubleSide,
           depthWrite: false,
           envMapIntensity: 2,
-          specularIntensity: 1,
         }),
   );
 
@@ -617,7 +617,7 @@ void main() {`,
 export type Resources = Awaited<ReturnType<typeof createResources>>;
 
 /** A warm "studio" made of glowing panels, baked once into a PMREM environment (no HDRI download). */
-function bakeEnvironment(gl: THREE.WebGLRenderer, size: number) {
+function environmentScene() {
   const env = new THREE.Scene();
   env.background = new THREE.Color("#120a06");
   const box = new THREE.PlaneGeometry(1, 1);
@@ -639,26 +639,128 @@ function bakeEnvironment(gl: THREE.WebGLRenderer, size: number) {
     panel("#ffd9a0", 7.0, [-4.2, 3, -5.6], [1.1, 3.2]),
     panel("#ffd9a0", 7.0, [-6.6, 3, -3.2], [1.1, 3.2]),
   ];
-  const pm = new THREE.PMREMGenerator(gl);
-  const rt = pm.fromScene(env, 0.035, 0.1, 50, { size });
-  pm.dispose();
-  box.dispose();
-  mats.forEach((m) => m.dispose());
-  return rt;
+  return {
+    env,
+    dispose: () => {
+      box.dispose();
+      mats.forEach((m) => m.dispose());
+    },
+  };
 }
+
+/** PMREMGenerator internals (three 0.186) used to compile its filter shaders asynchronously. Optional: if they are
+    missing (another three version) the generator simply compiles them synchronously during the bake, as before. */
+interface PmremInternals {
+  _setSize?: (size: number) => void;
+  _allocateTargets?: () => THREE.WebGLRenderTarget;
+  _pingPongRenderTarget?: THREE.WebGLRenderTarget | null;
+  _lodMeshes?: THREE.Mesh[];
+  _ggxMaterial?: THREE.Material | null;
+  _blurMaterial?: THREE.Material | null;
+}
+
+type ProgramLike = { isReady?: () => boolean };
+
+/** Resolves once the given programs (default: every linked program) report KHR_parallel_shader_compile completion,
+    polling without ever stalling the main thread. */
+export function programsReady(gl: THREE.WebGLRenderer, only?: ProgramLike[]): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      const programs = only || ((gl.info.programs || []) as unknown as ProgramLike[]);
+      if (programs.every((p) => !p.isReady || p.isReady())) resolve();
+      else setTimeout(check, 16);
+    };
+    check();
+  });
+}
+
+/**
+  Start-up plan for the environment (medium/high), run by Experience as soon as the WebGL context exists, i.e.
+  while the geometry and painted textures are still being built on the main thread.
+  The PMREM filter shaders are big (the GGX one takes ~1.4 s to compile on ANGLE/D3D11) and three compiles them
+  synchronously inside the bake. Instead they are compiled asynchronously here (KHR_parallel_shader_compile), and
+  a placeholder target of the final size is allocated so the scene materials can be compiled before the bake (their
+  programs only depend on the PMREM size). `bake()` then draws the environment with programs that are already linked.
+*/
+export function prepareEnvironment(gl: THREE.WebGLRenderer, size: number) {
+  const pm = new THREE.PMREMGenerator(gl);
+  const pi = pm as unknown as PmremInternals;
+  const studio = environmentScene();
+  // kept until the bake: disposing it would release the shared program it warmed up
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(),
+    new THREE.MeshBasicMaterial({ name: "PMREM.Background", side: THREE.BackSide, depthWrite: false, depthTest: false }),
+  );
+  let placeholder: THREE.WebGLRenderTarget | null = null;
+  const before = new Set((gl.info.programs || []) as unknown as ProgramLike[]);
+  if (pi._setSize && pi._allocateTargets) {
+    pi._setSize(size);
+    placeholder = pi._allocateTargets();
+    const ping = pi._pingPongRenderTarget;
+    const mesh = pi._lodMeshes?.[0];
+    if (ping && mesh) {
+      const keep = mesh.material;
+      const cam = new THREE.OrthographicCamera();
+      const prev = gl.getRenderTarget();
+      // the filters render into half-float targets (no tone mapping): compile exactly that variant
+      gl.setRenderTarget(ping);
+      for (const m of [pi._ggxMaterial, pi._blurMaterial]) {
+        if (!m) continue;
+        mesh.material = m;
+        gl.compile(mesh, cam);
+      }
+      mesh.material = keep;
+      // the bake's own draws too: the light panels and the generator's background box (same material settings,
+      // so three reuses the program), rendered into the cube target without tone mapping
+      if (placeholder) {
+        gl.setRenderTarget(placeholder);
+        gl.compile(studio.env, cam);
+        gl.compile(box, cam);
+      }
+      gl.setRenderTarget(prev);
+    }
+  }
+  const filters = ((gl.info.programs || []) as unknown as ProgramLike[]).filter((p) => !before.has(p));
+  let done = false;
+  const dispose = () => {
+    if (done) return;
+    done = true;
+    pm.dispose();
+    studio.dispose();
+    box.geometry.dispose();
+    box.material.dispose();
+    placeholder?.dispose();
+  };
+  return {
+    /** same size as the final PMREM, so materials compiled against it need no recompile after the bake */
+    placeholder: placeholder ? placeholder.texture : null,
+    /** the filter shaders have finished compiling */
+    ready: programsReady(gl, filters),
+    bake: () => {
+      const rt = pm.fromScene(studio.env, 0.035, 0.1, 50, { size });
+      dispose();
+      return rt;
+    },
+    dispose,
+  };
+}
+
+export type EnvironmentPrep = ReturnType<typeof prepareEnvironment>;
 
 /* ------------------------------------------------------------------- world */
 
 interface WorldProps {
-  /** built by Experience before the Canvas exists (see createResources) */
+  /** built by Experience once the WebGL context exists (see createResources) */
   res: Resources;
   settings: TierSettings;
   tier: Tier;
   reduced: boolean;
+  /** medium/high: the environment whose filter shaders Experience started compiling early */
+  envPrep: EnvironmentPrep | null;
   onReady: () => void;
 }
 
-export default function World({ res, settings, tier, reduced, onReady }: WorldProps) {
+export default function World({ res, settings, tier, reduced, envPrep, onReady }: WorldProps) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -789,31 +891,6 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
     }));
   }, [settings.beans]);
 
-  // Environment map: baked once from code-made light panels (medium/high only).
-  // Baked in a task of its own (after a yield); the shader warm-up below waits for it.
-  const envDone = useRef<Promise<void>>(Promise.resolve());
-  useEffect(() => {
-    if (!settings.envSize) {
-      envDone.current = Promise.resolve();
-      return;
-    }
-    let cancelled = false;
-    let rt: THREE.WebGLRenderTarget | null = null;
-    const s = getState().scene;
-    envDone.current = nextTask().then(() => {
-      if (cancelled) return;
-      rt = bakeEnvironment(gl, settings.envSize);
-      s.environment = rt.texture;
-      s.environmentIntensity = reduced ? 0.85 : 0.2;
-      invalidate();
-    });
-    return () => {
-      cancelled = true;
-      s.environment = null;
-      rt?.dispose();
-    };
-  }, [gl, getState, settings.envSize, invalidate, reduced]);
-
   // The sweep light always aims at the drink at the front of the tray.
   useEffect(() => {
     const spot = spotRef.current;
@@ -887,11 +964,16 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
   }, [settings.scatter, tmp, invalidate]);
 
   // Hook the DOM scroll controller up, then warm up shaders behind the loader before revealing.
+  // Every program (scene materials, the refractive-glass pre-pass variants on high, the PMREM filters) is linked
+  // in one go and compiled in parallel (KHR_parallel_shader_compile); nothing is drawn until all are finished, so no
+  // frame ever waits on a compile. The environment is baked as soon as its filter shaders are ready.
   useEffect(() => {
     stage.invalidate = invalidate;
     let cancelled = false;
+    let envRt: THREE.WebGLRenderTarget | null = null;
     const reveal = () => {
       if (cancelled) return;
+      if (rootRef.current) rootRef.current.visible = true;
       invalidate();
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
@@ -902,22 +984,66 @@ export default function World({ res, settings, tier, reduced, onReady }: WorldPr
         }),
       );
     };
-    // yield before compiling: mounting the scene and baking the environment were tasks of their own
-    envDone.current
-      .then(() => nextTask())
+    const compileAll = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      // visible only for the duration of the (synchronous) compile calls: the lights must count, but no frame may
+      // draw the scene before its programs are ready
+      root.visible = true;
+      gl.compile(scene, camera);
+      if (settings.transmission) {
+        // the refractive glass first draws every opaque object (and its own back faces) into a half-float target
+        // without tone mapping: those are separate programs, compile them now too
+        const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+        const prev = gl.getRenderTarget();
+        gl.setRenderTarget(target);
+        const seen = new Set<THREE.Material>();
+        root.traverse((o) => {
+          const m = (o as THREE.Mesh).material;
+          if (!(o as THREE.Mesh).isMesh || !m || Array.isArray(m) || m.transparent || seen.has(m)) return;
+          seen.add(m);
+          if ((m as THREE.MeshPhysicalMaterial).transmission > 0) {
+            if (m.side !== THREE.DoubleSide) return;
+            m.side = THREE.BackSide;
+            gl.compile(o, camera, scene);
+            m.side = THREE.DoubleSide;
+            m.needsUpdate = true;
+          } else gl.compile(o, camera, scene);
+        });
+        gl.setRenderTarget(prev);
+        target.dispose();
+      }
+      root.visible = false;
+    };
+    // yield before compiling: mounting the scene and building its resources were tasks of their own
+    nextTask()
       .then(() => {
         if (cancelled) return;
-        // the scene stays hidden until now, so no frame compiles a program before the environment map exists
-        // (that would compile every material twice, once without and once with the environment)
-        if (rootRef.current) rootRef.current.visible = true;
-        return gl.compileAsync(scene, camera);
+        let envReady: Promise<void> = Promise.resolve();
+        const s = getState().scene;
+        if (envPrep) {
+          // the scene programs are compiled against a placeholder of the final PMREM size
+          s.environment = envPrep.placeholder;
+          s.environmentIntensity = reduced ? 0.85 : 0.2;
+          envReady = envPrep.ready
+            .then(() => nextTask())
+            .then(() => {
+              if (cancelled) return;
+              envRt = envPrep.bake();
+              s.environment = envRt.texture;
+            });
+        }
+        compileAll();
+        return Promise.all([envReady, programsReady(gl)]);
       })
       .then(reveal, reveal);
     return () => {
       cancelled = true;
       stage.invalidate = () => {};
+      getState().scene.environment = null;
+      envRt?.dispose();
     };
-  }, [gl, scene, camera, invalidate, onReady]);
+  }, [gl, scene, camera, invalidate, onReady, getState, envPrep, settings.transmission, reduced]);
 
   useFrame((state, delta) => {
     const R = live.current;
