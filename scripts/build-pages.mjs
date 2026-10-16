@@ -18,4 +18,7 @@ if (!existsSync("out")) {
 }
 // stops GitHub Pages from running Jekyll, which would hide the _next/ folder
 writeFileSync("out/.nojekyll", "");
+// the gh-pages branch is a built static copy: tell Vercel's Git integration not to try to deploy it
+writeFileSync("out/vercel.json", JSON.stringify({ git: { deploymentEnabled: false } }) + "
+");
 console.log("build:pages: out/ ready (with .nojekyll)");
