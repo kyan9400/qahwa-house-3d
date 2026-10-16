@@ -3,7 +3,7 @@
 import { useRef, useSyncExternalStore } from "react";
 import { dismissMotionQuestion, setMotion, shouldAskAboutMotion, subscribeMotion } from "@/lib/motion";
 
-/** First visit with the OS "reduce motion" setting on: explain why things are calm and offer full motion. */
+/** Optional motion question (only shown when data-motion-ask is set on <html>; the site now starts in full motion, so it stays hidden). */
 export default function MotionToast() {
   const ask = useSyncExternalStore(subscribeMotion, shouldAskAboutMotion, () => false);
   const boxRef = useRef<HTMLDivElement>(null);

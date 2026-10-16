@@ -53,6 +53,7 @@ import {
   surfaceFragment,
   surfaceVertex,
 } from "./shaders";
+import { loadProps, loadTrayWood } from "./props";
 
 /* ------------------------------------------------------------------ layout */
 
@@ -66,6 +67,13 @@ const KEY_LIGHT = new THREE.Vector3(-3, 5, 4);
 /** the window: low, behind and to the left of the tray; it throws the long shadows and the rim light */
 const WINDOW_LIGHT = new THREE.Vector3(-4.2, 3.6, -3.4);
 const TABLE_Y = -0.0755; // the tray's foot rests on the table
+// the scanned props on the table (world space: they stay put while the tray turns)
+// all behind the tray, clear of the copy column: the brass pot back-left (in the hero too), the dates and the clay
+// pot further back (seen once the tray view opens up)
+const BRASS_POT: [number, number, number] = [-1.35, TABLE_Y, -2.42];
+const CLAY_POT: [number, number, number] = [1.03, TABLE_Y, -2.82];
+const DATES: [number, number, number] = [-0.3, TABLE_Y, -2.75];
+const DATE_LIFT = -0.01; // the carved plate's floor sits a little lower than the painted dish's
 
 /*
   Lighting moods, one per chapter: the hero, then one per drink at the front of the tray.
@@ -147,6 +155,10 @@ export async function createResources(settings: TierSettings) {
     disposables.push(x);
     return x;
   };
+  // the scanned table props download and decode while everything else is built; if they fail the scene simply
+  // goes without them (the painted dish of dates stands in)
+  const propsLoad = loadProps(settings.envSize ? 1 : 0.55, settings.shadows).catch(() => null);
+  const veneerLoad = loadTrayWood(settings.envSize ? 8 : 1).catch(() => null);
 
   // vessel meshes are rebuilt with this tier's profile smoothness (layout metrics stay the same)
   const shapes = VESSELS.map((v) => vesselShape(v.spec, div));
@@ -189,9 +201,10 @@ export async function createResources(settings: TierSettings) {
   steamGeo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 4));
   steamGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 50);
 
-  // textures (painted on canvas)
+  // textures: the tray floor is a scanned walnut veneer (painted on canvas only if it failed to load), the rest painted
+  const veneer = await veneerLoad;
   await nextTask();
-  const wood = woodTexture(settings.envSize ? 1024 : 512);
+  const wood = veneer || woodTexture(settings.envSize ? 1024 : 512);
   keep(wood.map);
   keep(wood.rough);
   wood.map.wrapS = wood.map.wrapT = THREE.RepeatWrapping;
@@ -392,7 +405,9 @@ export async function createResources(settings: TierSettings) {
   const trayTopMat = keep(
     new THREE.MeshStandardMaterial({
       map: wood.map,
-      roughness: settings.envSize ? 0.85 : 0.5,
+      // the veneer scan is a pale, unfinished walnut: darkened to the oiled walnut of the painted version
+      color: veneer ? "#8f6f5e" : "#ffffff",
+      roughness: settings.envSize ? (veneer ? 0.95 : 0.85) : 0.5,
       roughnessMap: settings.envSize ? wood.rough : null,
     }),
   );
@@ -565,8 +580,11 @@ void main() {`,
   }
   const podMat = keep(new THREE.MeshStandardMaterial({ color: "#a3a868", roughness: 0.7 }));
   const dishMat = keep(new THREE.MeshStandardMaterial({ color: "#2f5a49", roughness: 0.2 }));
+  const props = await propsLoad;
+  if (props) keep(props);
 
   return {
+    props,
     focus,
     tableMat,
     win,
@@ -991,6 +1009,8 @@ export default function World({ res, settings, tier, reduced, envPrep, onReady }
       // draw the scene before its programs are ready
       root.visible = true;
       gl.compile(scene, camera);
+      // upload the scanned props' textures now, so the first visible frame does not stall on them
+      live.current?.props?.textures.forEach((tex) => gl.initTexture(tex));
       if (settings.transmission) {
         // the refractive glass first draws every opaque object (and its own back faces) into a half-float target
         // without tone mapping: those are separate programs, compile them now too
@@ -1435,19 +1455,32 @@ export default function World({ res, settings, tier, reduced, envPrep, onReady }
       <mesh geometry={r.plane} material={r.glowMat} position={[0, TABLE_Y + 0.001, 0]} scale={[8, 1, 8]} renderOrder={-1} />
       <mesh geometry={r.plane} material={r.trayShadowMat} position={[0, TABLE_Y + 0.002, 0]} scale={[5.0, 1, 5.0]} renderOrder={-1} />
 
-      {/* things on the table: a glazed dish of dates, spilled beans and cardamom pods */}
-      <group position={[2.75, TABLE_Y, 0.55]}>
+      {/* things on the table: a carved wooden plate of dates (scanned; a painted dish if the scans are missing),
+          a scanned brass pot and a glazed clay pot, spilled beans and cardamom pods */}
+      <group position={DATES}>
         <mesh geometry={r.plane} material={r.shadowMat} position={[0.04, 0.002, 0.03]} scale={[1.0, 1, 1.0]} renderOrder={-1} />
-        <mesh geometry={r.dish} material={r.dishMat} castShadow receiveShadow />
+        {r.props ? <primitive object={r.props.objects.plate} /> : <mesh geometry={r.dish} material={r.dishMat} castShadow receiveShadow />}
         {[
           [0.08, 0.075, 0.05, 0.4, 0.15],
           [-0.12, 0.07, -0.02, -0.7, -0.1],
           [0.02, 0.07, -0.14, 1.6, 0.05],
           [-0.03, 0.12, 0.02, 0.9, 0.35],
         ].map(([x, y, z, ry, rz], k) => (
-          <mesh key={k} geometry={r.date} material={r.dateMat} position={[x, y, z]} rotation={[0, ry, rz]} castShadow />
+          <mesh key={k} geometry={r.date} material={r.dateMat} position={[x, y + DATE_LIFT, z]} rotation={[0, ry, rz]} castShadow />
         ))}
       </group>
+      {r.props && (
+        <>
+          <group position={BRASS_POT}>
+            <mesh geometry={r.plane} material={r.shadowMat} position={[0.05, 0.002, 0.04]} scale={[1.35, 1, 1.35]} renderOrder={-1} />
+            <primitive object={r.props.objects.brassPot} rotation={[0, 0.6, 0]} />
+          </group>
+          <group position={CLAY_POT}>
+            <mesh geometry={r.plane} material={r.shadowMat} position={[0.05, 0.002, 0.04]} scale={[1.5, 1, 1.5]} renderOrder={-1} />
+            <primitive object={r.props.objects.ceramicPot} rotation={[0, -0.4, 0]} />
+          </group>
+        </>
+      )}
       <instancedMesh ref={scatterRef} args={[r.bean, r.beanMat, settings.scatter]} castShadow receiveShadow />
       <instancedMesh ref={podsRef} args={[r.pod, r.podMat, Math.max(5, Math.round(settings.scatter / 3))]} castShadow />
 

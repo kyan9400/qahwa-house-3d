@@ -104,7 +104,7 @@ is revealed when all programs report completion, so no frame ever stalls on a co
 three's per-program info-log reads (`checkShaderErrors`). Measured load → 3D visible (Chrome, ANGLE/D3D11, production
 build): high ≈ 12–13 s → ≈ 4.4–4.6 s, medium ≈ 6.4–7 s → ≈ 3.7–4.2 s, low ≈ 2.7–3 s.
 
-**Reduced motion** (default when the OS asks; "Turn on full motion" toggle, remembered in localStorage, `?motion=full`
+**Reduced motion** (opt-in; the site starts in full motion; "Turn on full motion" toggle, remembered in localStorage, `?motion=full`
 override): no orbiting beans (resting on the tray), steam frozen as a still wisp, no pour animation (vessels shown full),
 camera and tray *cut* to their scroll positions instead of sweeping.
 

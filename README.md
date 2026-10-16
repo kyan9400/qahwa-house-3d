@@ -19,12 +19,16 @@ Live: https://qahwa-house-3d.vercel.app
   one time uniform — zero CPU updates per frame.
 - **Orbiting beans.** One `InstancedMesh` of displaced-ellipsoid beans circles the front cup in the hero and widens to
   circle the whole tray in the menu, updated with reused objects.
+- **Real objects on a real table.** The tray floor is a scanned walnut veneer, and behind the tray stand three
+  photogrammetry scans from Poly Haven (CC0): a lidded brass pot, a carved wooden plate holding the dates and a glazed
+  clay pot. They are meshopt-compressed `.glb` files with WebP textures (about 0.67 MB in total, in `public/models/`),
+  loaded with the 3D chunk and decoded with three's bundled `MeshoptDecoder`; the reveal waits for them.
 - **Lighting without downloads.** Hemisphere, key and rim lights plus a small environment map baked once with
   `PMREMGenerator` from glowing panels built in code (no HDRI, no CDN).
 - **Performance rules applied:** render on demand (the loop only runs while something moves, the stage is on screen and
   the tab is visible), a GPU quality tier chosen before the canvas exists, an idle-aware adaptive pixel ratio, one
   scroll smoothing step in the render loop, `compileAsync` warm-up behind the SVG poster, no per-frame allocations,
-  reduced motion by default when the OS asks with a "Turn on full motion" toggle, and a designed SVG poster when WebGL
+  full motion by default on every first visit, with a "Reduce motion" toggle (remembered in localStorage), and a designed SVG poster when WebGL
   is missing, the context is lost or the GPU is a software renderer (SwiftShader, llvmpipe, ...). Append `?quality=low|medium|high` or `?motion=full|reduced` to test.
 
 ## Tech stack
@@ -60,8 +64,9 @@ npm run build:pages   # static GitHub Pages mirror in out/ (basePath /qahwa-hous
 ```
 
 ## Credits
-Fonts: Fraunces, Manrope and Reem Kufi (SIL OFL 1.1). Libraries: see [CREDITS.md](CREDITS.md). All 3D, textures,
-illustrations, favicon and social image are made in code for this project.
+Fonts: Fraunces, Manrope and Reem Kufi (SIL OFL 1.1). Libraries: see [CREDITS.md](CREDITS.md). The brass pot, carved
+plate and clay pot scans and the walnut veneer texture are CC0 assets from Poly Haven (listed in CREDITS.md); every other
+3D model, texture, illustration, the favicon and the social image are made in code for this project.
 
 ## Copyright
 © 2026 Alhassan Alfarran. All rights reserved — see [LICENSE](LICENSE).

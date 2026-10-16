@@ -1,21 +1,18 @@
 /*
   Motion preference.
-  The OS "reduce motion" setting is respected by default, but many people switch animations off for speed,
-  not comfort, so visitors can turn full motion back on. The choice is remembered in localStorage;
+  The site starts in full motion on every first visit (the OS "reduce motion" setting is often switched on for
+  speed, not comfort). Visitors can reduce motion with the toggle; the choice is remembered in localStorage and
   ?motion=full / ?motion=reduced in the URL overrides it. An inline script in <head> applies the result to
-  <html data-motion="full|reduced" data-motion-asked="1"> before first paint (see MOTION_BOOT_SCRIPT).
+  <html data-motion="full|reduced"> before first paint (see MOTION_BOOT_SCRIPT).
   It also adds the "js" class, so the heading reveals only hide words when script is actually running.
 */
 
 export const MOTION_KEY = "qahwa-motion";
 
-export const MOTION_BOOT_SCRIPT = `(function(){try{var d=document.documentElement,c=null,s=false;d.classList.add('js');
-try{s=window.matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}
+export const MOTION_BOOT_SCRIPT = `(function(){try{var d=document.documentElement,c=null;d.classList.add('js');
 var u=new URLSearchParams(location.search).get('motion');
 if(u==='full'||u==='reduced'){c=u}else{try{c=localStorage.getItem('${MOTION_KEY}')}catch(e){}}
-var r=c==='full'?false:c==='reduced'?true:s;
-d.dataset.motion=r?'reduced':'full';
-if(s&&!c){d.dataset.motionAsk='1'}}catch(e){}})();`;
+d.dataset.motion=c==='reduced'?'reduced':'full'}catch(e){}})();`;
 
 export type MotionMode = "full" | "reduced";
 
